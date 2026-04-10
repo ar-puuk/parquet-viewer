@@ -72,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
 
             <a
-              href="https://github.com/pukar-bhandari/parquet-viewer"
+              href="https://github.com/ar-puuk/parquet-viewer"
               target="_blank"
               rel="noopener noreferrer"
               title="View on GitHub"
