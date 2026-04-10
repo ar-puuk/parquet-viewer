@@ -54,7 +54,10 @@ const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
     const worker = new Worker(workerUrl)
     const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING)
     dbInstance = new duckdb.AsyncDuckDB(logger, worker)
-    await dbInstance.instantiate(bundle.mainModule, bundle.pthreadWorker)
+    // Same issue applies to the WASM module — the worker fetches it internally,
+    // so a relative path would fail in the blob: context.
+    const absoluteMainModule = new URL(bundle.mainModule, window.location.href).href
+    await dbInstance.instantiate(absoluteMainModule, bundle.pthreadWorker)
     connInstance = await dbInstance.connect()
     URL.revokeObjectURL(workerUrl)
     setState({ status: 'ready' })
