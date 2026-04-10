@@ -7,20 +7,24 @@ interface Props {
 }
 
 export function TableCell({ value, colName, colType }: Props) {
+  const baseType = colType.split('(')[0].toUpperCase().trim()
+
+  // BLOB columns are excluded from table queries to avoid massive payloads.
+  // Show a static placeholder — value will always be undefined for these.
+  if (baseType === 'BLOB') {
+    const label = isGeometryColumn(colName, colType) ? '[geometry]' : '[blob]'
+    return (
+      <div className="px-2 h-full flex items-center">
+        <span className="text-xs text-gray-400 dark:text-gray-600 font-mono">{label}</span>
+      </div>
+    )
+  }
+
   // Null / undefined
   if (value === null || value === undefined) {
     return (
       <div className="px-2 h-full flex items-center">
         <span className="text-gray-300 dark:text-gray-700 text-xs select-none">—</span>
-      </div>
-    )
-  }
-
-  // Geometry columns — never show raw bytes
-  if (isGeometryColumn(colName, colType)) {
-    return (
-      <div className="px-2 h-full flex items-center">
-        <span className="text-xs text-gray-400 dark:text-gray-600 font-mono">[geometry]</span>
       </div>
     )
   }
