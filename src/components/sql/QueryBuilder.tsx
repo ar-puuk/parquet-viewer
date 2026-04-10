@@ -328,16 +328,16 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
         </div>
 
         {state.mode === 'select' ? (
-          <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-0.5">
             {vis.map((col) => (
-              <label key={col.name} className="flex items-center gap-1 cursor-pointer min-w-0 max-w-[45%]">
+              <label key={col.name} className="flex items-center gap-1 cursor-pointer min-w-0">
                 <input
                   type="checkbox"
                   checked={isColChecked(col.name)}
                   onChange={() => toggleCol(col.name)}
                   className="accent-indigo-500 w-3 h-3 flex-shrink-0"
                 />
-                <span className="truncate" title={col.name}>{col.name}</span>
+                <span className="truncate text-[11px]" title={col.name}>{col.name}</span>
               </label>
             ))}
           </div>

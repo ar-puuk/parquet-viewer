@@ -112,11 +112,10 @@ function FileLayout() {
 
   return (
     <div className="flex-1 flex overflow-hidden">
-      <SchemaSidebar />
+      {/* SQL / Builder — left sidebar */}
+      <SqlPanel />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* SQL panel — always shown when a file is loaded */}
-        <SqlPanel />
 
         {/* Main content area changes based on file type + query state */}
         {geoInfo ? (
@@ -174,6 +173,9 @@ function FileLayout() {
           )
         )}
       </div>
+
+      {/* Schema — right sidebar */}
+      <SchemaSidebar />
     </div>
   )
 }

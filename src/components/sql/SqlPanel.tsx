@@ -7,8 +7,6 @@ import { useSqlQuery } from '../../hooks/useSqlQuery'
 const EXCLUDED_TYPES = new Set(['BLOB', 'GEOMETRY'])
 const HISTORY_KEY    = 'sqlHistory'
 const MAX_HISTORY    = 20
-const MIN_HEIGHT     = 60
-const MAX_HEIGHT     = 400
 
 function buildDefaultSql(schema: { name: string; type: string }[] | null): string {
   if (!schema) return 'SELECT *\nFROM data\nLIMIT 1000'
@@ -40,40 +38,29 @@ export function SqlPanel() {
 
   const defaultSql = useMemo(() => buildDefaultSql(schema), [schema])
 
-  const [sql, setSql]           = useState(defaultSql)
+  const [sql, setSql]         = useState(defaultSql)
   const [activeTab, setActiveTab] = useState<'sql' | 'builder'>('sql')
-  const [isOpen, setIsOpen] = useState<boolean>(() => {
-    const stored = localStorage.getItem('sqlPanelOpen')
-    return stored === null ? true : stored === 'true'
-  })
-  const [editorHeight, setEditorHeight] = useState<number>(() => {
-    const stored = parseInt(localStorage.getItem('sqlPanelHeight') ?? '', 10)
-    return isNaN(stored) ? 120 : Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, stored))
-  })
+  const [expanded, setExpanded]   = useState(true)
 
-  // Track whether we've auto-run for the current file to avoid running twice
-  const autoRanRef = useRef(false)
+  // Builder gets its own snapshot of SQL on every tab switch to 'builder'
+  const [builderKey, setBuilderKey]         = useState(0)
+  const [builderInitialSql, setBuilderInitialSql] = useState(sql)
 
-  // Query history
+  const autoRanRef      = useRef(false)
   const historyRef      = useRef<string[]>(loadHistory())
-  const historyIndexRef = useRef<number>(-1)  // -1 = not browsing history
+  const historyIndexRef = useRef<number>(-1)
 
-  // Persist isOpen to localStorage
-  useEffect(() => {
-    localStorage.setItem('sqlPanelOpen', String(isOpen))
-  }, [isOpen])
-
-  // When a new file is loaded (schema changes), reset editor + auto-run default query
+  // When a new file is loaded reset state and auto-run default query
   useEffect(() => {
     if (!schema) return
     const fresh = buildDefaultSql(schema)
     setSql(fresh)
-    setIsOpen(true)
-    autoRanRef.current = false
+    setActiveTab('sql')
+    setExpanded(true)
+    autoRanRef.current    = false
     historyIndexRef.current = -1
   }, [schema])
 
-  // Auto-run the default query once schema + DuckDB are ready
   useEffect(() => {
     if (!schema || autoRanRef.current) return
     autoRanRef.current = true
@@ -81,10 +68,17 @@ export function SqlPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema])
 
+  const handleTabChange = useCallback((tab: 'sql' | 'builder') => {
+    if (tab === 'builder') {
+      setBuilderInitialSql(sql)
+      setBuilderKey((k) => k + 1)
+    }
+    setActiveTab(tab)
+  }, [sql])
+
   const handleRun = useCallback(() => {
     if (!sql.trim() || isRunning) return
     clearError()
-    // Push to history (deduplicate head)
     const trimmed = sql.trim()
     const hist = historyRef.current.filter((q) => q !== trimmed)
     hist.unshift(trimmed)
@@ -115,60 +109,41 @@ export function SqlPanel() {
     }
   }, [defaultSql])
 
-  // ── Resize drag handle ───────────────────────────────────────────────────
-  const dragStartRef = useRef<{ y: number; height: number } | null>(null)
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    dragStartRef.current = { y: e.clientY, height: editorHeight }
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!dragStartRef.current) return
-      const delta  = ev.clientY - dragStartRef.current.y
-      const newH   = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, dragStartRef.current.height + delta))
-      setEditorHeight(newH)
-      localStorage.setItem('sqlPanelHeight', String(Math.round(newH)))
-    }
-    function onMouseUp() {
-      dragStartRef.current = null
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-  }, [editorHeight])
-
-  // ── Collapsed bar (shown after first run) ────────────────────────────────
-  if (!isOpen && queryResult) {
+  // ── Collapsed icon bar ────────────────────────────────────────────────────
+  if (!expanded) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0 min-w-0">
-        <code className="text-[11px] font-mono text-gray-500 dark:text-gray-400 truncate flex-1 min-w-0">
-          {queryResult.sql.replace(/\s+/g, ' ')}
-        </code>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 whitespace-nowrap">
-          {queryResult.rows.length.toLocaleString()} rows · {queryResult.executionMs}ms
-        </span>
+      <aside className="flex flex-col items-center w-10 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 py-3 gap-3 flex-shrink-0">
         <button
-          onClick={() => setIsOpen(true)}
-          className="text-[11px] font-medium text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex-shrink-0"
+          onClick={() => setExpanded(true)}
+          title="Expand SQL panel"
+          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
         >
-          Edit
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+            <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+          </svg>
         </button>
-      </div>
+        {/* Rotated label */}
+        <span
+          className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 select-none"
+          style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+        >
+          SQL
+        </span>
+      </aside>
     )
   }
 
-  // ── Expanded panel ───────────────────────────────────────────────────────
+  // ── Expanded sidebar ──────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-        {/* Tab toggle */}
+    <aside className="w-72 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col overflow-hidden">
+
+      {/* Header: tabs + collapse */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
         <div className="flex items-center gap-0.5 bg-gray-200 dark:bg-gray-700 rounded p-0.5">
           {(['sql', 'builder'] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => handleTabChange(tab)}
               className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors capitalize ${
                 activeTab === tab
                   ? 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 shadow-sm'
@@ -179,26 +154,19 @@ export function SqlPanel() {
             </button>
           ))}
         </div>
-
-        <div className="flex items-center gap-3">
-          {queryResult && !isRunning && (
-            <span className="text-[11px] text-gray-400 dark:text-gray-500">
-              {queryResult.rows.length.toLocaleString()} rows · {queryResult.executionMs}ms
-            </span>
-          )}
-          {queryResult && (
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            >
-              Collapse
-            </button>
-          )}
-        </div>
+        <button
+          onClick={() => setExpanded(false)}
+          title="Collapse SQL panel"
+          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+            <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+          </svg>
+        </button>
       </div>
 
-      {/* Content: SQL editor or visual builder */}
-      <div style={{ height: editorHeight }} className="overflow-hidden">
+      {/* Content: SQL editor or Builder (flex-1 so it fills remaining height) */}
+      <div className="flex-1 overflow-hidden">
         {activeTab === 'sql' ? (
           <SqlEditor
             value={sql}
@@ -211,64 +179,68 @@ export function SqlPanel() {
           />
         ) : schema ? (
           <QueryBuilder
-            key={sql + schema.map((c) => c.name).join(',')}
+            key={builderKey}
             schema={schema}
-            initialSql={sql}
+            initialSql={builderInitialSql}
             onSqlChange={setSql}
           />
         ) : (
-          <div className="h-full flex items-center justify-center text-[11px] text-gray-400">
+          <div className="h-full flex items-center justify-center text-[11px] text-gray-400 dark:text-gray-600 p-4 text-center">
             Load a file to use the query builder
           </div>
         )}
       </div>
 
-      {/* Resize drag handle */}
-      <div
-        onMouseDown={handleResizeMouseDown}
-        className="h-1.5 cursor-ns-resize bg-gray-100 dark:bg-gray-800 hover:bg-indigo-200 dark:hover:bg-indigo-900 transition-colors flex-shrink-0"
-        title="Drag to resize editor"
-      />
+      {/* Footer: run button + stats + copy */}
+      <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <button
+            onClick={handleRun}
+            disabled={isRunning || !sql.trim()}
+            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition-colors flex-shrink-0"
+          >
+            {isRunning ? (
+              <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+              </svg>
+            ) : (
+              <span className="text-[10px]">▶</span>
+            )}
+            Run
+          </button>
 
-      {/* Footer: run button */}
-      <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-        <button
-          onClick={handleRun}
-          disabled={isRunning || !sql.trim()}
-          className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition-colors"
-        >
-          {isRunning ? (
-            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-            </svg>
+          {queryResult && !isRunning ? (
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+              {queryResult.rows.length.toLocaleString()} rows · {queryResult.executionMs}ms
+            </span>
           ) : (
-            <span className="text-[10px]">▶</span>
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">
+              Ctrl+Enter
+            </span>
           )}
-          Run
-        </button>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">
-          Ctrl+Enter · Alt+↑↓ history
-        </span>
-        <button
-          onClick={() => navigator.clipboard.writeText(sql).catch(() => {})}
-          title="Copy SQL"
-          className="ml-auto text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
-        >
-          <svg viewBox="0 0 14 14" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5}>
-            <rect x="4" y="4" width="8" height="9" rx="1" />
-            <path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
-          </svg>
-          Copy
-        </button>
+
+          <button
+            onClick={() => navigator.clipboard.writeText(sql).catch(() => {})}
+            title="Copy SQL"
+            className="ml-auto flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex-shrink-0"
+          >
+            <svg viewBox="0 0 14 14" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <rect x="4" y="4" width="8" height="9" rx="1" />
+              <path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+            </svg>
+            Copy
+          </button>
+        </div>
+
+        {/* Inline error */}
+        {error && (
+          <div className="mx-3 mb-2 px-2 py-1.5 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded text-[11px] font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap break-words">
+            {error}
+          </div>
+        )}
       </div>
 
-      {/* Inline error */}
-      {error && (
-        <div className="mx-3 mb-2 px-2 py-1.5 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded text-[11px] font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap break-words">
-          {error}
-        </div>
-      )}
-    </div>
+    </aside>
   )
 }
