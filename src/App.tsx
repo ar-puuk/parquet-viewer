@@ -2,18 +2,17 @@ import { HashRouter, Routes, Route } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { DropZone } from './components/loader/DropZone'
 import { SchemaSidebar } from './components/layout/SchemaSidebar'
+import { DataTable } from './components/table/DataTable'
 import { useAppStore } from './store/useAppStore'
 
-// Import useDuckDB to ensure initialization starts at app load
+// Ensure DuckDB initialization starts at app load
 import './hooks/useDuckDB'
 
 function ViewerLayout() {
   return (
     <div className="flex-1 flex overflow-hidden">
       <SchemaSidebar />
-      <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600 text-sm">
-        Table view coming in Phase 3
-      </div>
+      <DataTable />
     </div>
   )
 }
