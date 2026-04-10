@@ -4,6 +4,10 @@ import { useAppStore } from '../../store/useAppStore'
 import { useSqlQuery } from '../../hooks/useSqlQuery'
 
 const EXCLUDED_TYPES = new Set(['BLOB', 'GEOMETRY'])
+const HISTORY_KEY    = 'sqlHistory'
+const MAX_HISTORY    = 20
+const MIN_HEIGHT     = 60
+const MAX_HEIGHT     = 400
 
 function buildDefaultSql(schema: { name: string; type: string }[] | null): string {
   if (!schema) return 'SELECT *\nFROM data\nLIMIT 1000'
@@ -12,6 +16,16 @@ function buildDefaultSql(schema: { name: string; type: string }[] | null): strin
     .map((c) => `"${c.name}"`)
   if (excludedCols.length === 0) return 'SELECT *\nFROM data\nLIMIT 1000'
   return `SELECT * EXCLUDE (${excludedCols.join(', ')})\nFROM data\nLIMIT 1000`
+}
+
+function loadHistory(): string[] {
+  try { return JSON.parse(sessionStorage.getItem(HISTORY_KEY) ?? '[]') }
+  catch { return [] }
+}
+
+function saveHistory(history: string[]) {
+  try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history)) }
+  catch {}
 }
 
 export function SqlPanel() {
@@ -25,11 +39,27 @@ export function SqlPanel() {
 
   const defaultSql = useMemo(() => buildDefaultSql(schema), [schema])
 
-  const [sql, setSql]       = useState(defaultSql)
-  const [isOpen, setIsOpen] = useState(true)
+  const [sql, setSql]   = useState(defaultSql)
+  const [isOpen, setIsOpen] = useState<boolean>(() => {
+    const stored = localStorage.getItem('sqlPanelOpen')
+    return stored === null ? true : stored === 'true'
+  })
+  const [editorHeight, setEditorHeight] = useState<number>(() => {
+    const stored = parseInt(localStorage.getItem('sqlPanelHeight') ?? '', 10)
+    return isNaN(stored) ? 120 : Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, stored))
+  })
 
   // Track whether we've auto-run for the current file to avoid running twice
   const autoRanRef = useRef(false)
+
+  // Query history
+  const historyRef      = useRef<string[]>(loadHistory())
+  const historyIndexRef = useRef<number>(-1)  // -1 = not browsing history
+
+  // Persist isOpen to localStorage
+  useEffect(() => {
+    localStorage.setItem('sqlPanelOpen', String(isOpen))
+  }, [isOpen])
 
   // When a new file is loaded (schema changes), reset editor + auto-run default query
   useEffect(() => {
@@ -38,6 +68,7 @@ export function SqlPanel() {
     setSql(fresh)
     setIsOpen(true)
     autoRanRef.current = false
+    historyIndexRef.current = -1
   }, [schema])
 
   // Auto-run the default query once schema + DuckDB are ready
@@ -51,8 +82,59 @@ export function SqlPanel() {
   const handleRun = useCallback(() => {
     if (!sql.trim() || isRunning) return
     clearError()
+    // Push to history (deduplicate head)
+    const trimmed = sql.trim()
+    const hist = historyRef.current.filter((q) => q !== trimmed)
+    hist.unshift(trimmed)
+    if (hist.length > MAX_HISTORY) hist.length = MAX_HISTORY
+    historyRef.current = hist
+    saveHistory(hist)
+    historyIndexRef.current = -1
     runQuery(sql)
   }, [sql, isRunning, runQuery, clearError])
+
+  const handleHistoryUp = useCallback(() => {
+    const hist = historyRef.current
+    if (hist.length === 0) return
+    const next = Math.min(historyIndexRef.current + 1, hist.length - 1)
+    historyIndexRef.current = next
+    setSql(hist[next])
+  }, [])
+
+  const handleHistoryDown = useCallback(() => {
+    const hist = historyRef.current
+    const next = historyIndexRef.current - 1
+    if (next < 0) {
+      historyIndexRef.current = -1
+      setSql(defaultSql)
+    } else {
+      historyIndexRef.current = next
+      setSql(hist[next])
+    }
+  }, [defaultSql])
+
+  // ── Resize drag handle ───────────────────────────────────────────────────
+  const dragStartRef = useRef<{ y: number; height: number } | null>(null)
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragStartRef.current = { y: e.clientY, height: editorHeight }
+
+    function onMouseMove(ev: MouseEvent) {
+      if (!dragStartRef.current) return
+      const delta  = ev.clientY - dragStartRef.current.y
+      const newH   = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, dragStartRef.current.height + delta))
+      setEditorHeight(newH)
+      localStorage.setItem('sqlPanelHeight', String(Math.round(newH)))
+    }
+    function onMouseUp() {
+      dragStartRef.current = null
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }, [editorHeight])
 
   // ── Collapsed bar (shown after first run) ────────────────────────────────
   if (!isOpen && queryResult) {
@@ -99,10 +181,25 @@ export function SqlPanel() {
         </div>
       </div>
 
-      {/* CodeMirror editor */}
-      <div className="h-[120px] overflow-hidden">
-        <SqlEditor value={sql} onChange={setSql} onRun={handleRun} isDark={isDark} />
+      {/* CodeMirror editor — height is user-resizable */}
+      <div style={{ height: editorHeight }} className="overflow-hidden">
+        <SqlEditor
+          value={sql}
+          onChange={setSql}
+          onRun={handleRun}
+          isDark={isDark}
+          schema={schema}
+          onHistoryUp={handleHistoryUp}
+          onHistoryDown={handleHistoryDown}
+        />
       </div>
+
+      {/* Resize drag handle */}
+      <div
+        onMouseDown={handleResizeMouseDown}
+        className="h-1.5 cursor-ns-resize bg-gray-100 dark:bg-gray-800 hover:bg-indigo-200 dark:hover:bg-indigo-900 transition-colors flex-shrink-0"
+        title="Drag to resize editor"
+      />
 
       {/* Footer: run button */}
       <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
@@ -122,7 +219,7 @@ export function SqlPanel() {
           Run
         </button>
         <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">
-          Ctrl+Enter
+          Ctrl+Enter · ↑↓ history
         </span>
       </div>
 
