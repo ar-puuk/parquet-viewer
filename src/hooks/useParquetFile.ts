@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as duckdb from '@duckdb/duckdb-wasm'
-import { queryDB, getDBInstance, getConnection } from './useDuckDB'
+import { queryDB, queryDBWithColumns, getDBInstance, getConnection } from './useDuckDB'
 import { normalizeUrl } from '../utils/s3url'
 import { useAppStore } from '../store/useAppStore'
 import { detectGeo, ensureSpatialExtension } from '../utils/geoDetect'
@@ -67,9 +67,22 @@ function classifyError(e: unknown): string {
 }
 
 async function extractSchema(): Promise<ColumnInfo[]> {
-  const rows = await queryDB('SELECT column_name, column_type, "null" FROM (DESCRIBE data)')
-  return rows.map((row) => ({
-    name: String(row['column_name'] ?? ''),
+  const descRows = await queryDB('SELECT column_name, column_type, "null" FROM (DESCRIBE data)')
+
+  // DESCRIBE returns column names from the parquet file's own metadata, which can differ
+  // from the names DuckDB actually uses when the view contains duplicate column names
+  // (DuckDB appends _1, _2, etc. to deduplicate). Run SELECT * LIMIT 0 to get the
+  // actual Arrow field names — these are the names that all subsequent queries must use.
+  let actualNames: string[] | null = null
+  try {
+    const { columns } = await queryDBWithColumns('SELECT * FROM data LIMIT 0')
+    if (columns.length === descRows.length) actualNames = columns
+  } catch {
+    // fall back to DESCRIBE names
+  }
+
+  return descRows.map((row, i) => ({
+    name: actualNames?.[i] ?? String(row['column_name'] ?? ''),
     type: String(row['column_type'] ?? ''),
     nullable: String(row['null'] ?? 'YES').toUpperCase() === 'YES',
   }))
@@ -127,15 +140,18 @@ export function useParquetFile() {
       ])
 
       let geoInfo = await detectGeo(schema)
+      let finalSchema = schema
       if (geoInfo) {
         await ensureSpatialExtension()
         // Recreate the view with the spatial extension active so DuckDB resolves
         // GeoArrow struct columns and WKB blobs to its native GEOMETRY type.
         await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
         geoInfo = await resolveGeoEncoding(geoInfo)
+        // Re-extract schema: the spatial extension may change column types (e.g. BLOB → GEOMETRY).
+        finalSchema = await extractSchema()
       }
 
-      setSchema(schema)
+      setSchema(finalSchema)
       setFileStats(stats)
       setGeoInfo(geoInfo)
       setActiveFile({ name: file.name, type: 'local', registeredAs: REGISTERED_NAME, fileSizeBytes: file.size })
@@ -171,13 +187,15 @@ export function useParquetFile() {
       ])
 
       let geoInfo = await detectGeo(schema)
+      let finalSchema = schema
       if (geoInfo) {
         await ensureSpatialExtension()
         await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
         geoInfo = await resolveGeoEncoding(geoInfo)
+        finalSchema = await extractSchema()
       }
 
-      setSchema(schema)
+      setSchema(finalSchema)
       setFileStats(stats)
       setGeoInfo(geoInfo)
       setActiveFile({ name: fileName, type: 'url', registeredAs: REGISTERED_NAME, fileSizeBytes: null })
