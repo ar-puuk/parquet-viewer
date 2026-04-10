@@ -4,9 +4,12 @@ import { QueryBuilder } from './QueryBuilder'
 import { useAppStore } from '../../store/useAppStore'
 import { useSqlQuery } from '../../hooks/useSqlQuery'
 
-const EXCLUDED_TYPES = new Set(['BLOB', 'GEOMETRY'])
-const HISTORY_KEY    = 'sqlHistory'
-const MAX_HISTORY    = 20
+const EXCLUDED_TYPES  = new Set(['BLOB', 'GEOMETRY'])
+const HISTORY_KEY     = 'sqlHistory'
+const MAX_HISTORY     = 20
+const MIN_PANEL_WIDTH = 200
+const MAX_PANEL_WIDTH = 600
+const DEFAULT_WIDTH   = 288
 
 function buildDefaultSql(schema: { name: string; type: string }[] | null): string {
   if (!schema) return 'SELECT *\nFROM data\nLIMIT 1000'
@@ -38,9 +41,33 @@ export function SqlPanel() {
 
   const defaultSql = useMemo(() => buildDefaultSql(schema), [schema])
 
-  const [sql, setSql]         = useState(defaultSql)
+  const [sql, setSql]             = useState(defaultSql)
   const [activeTab, setActiveTab] = useState<'sql' | 'builder'>('sql')
   const [expanded, setExpanded]   = useState(true)
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    const stored = parseInt(localStorage.getItem('sqlPanelWidth') ?? '', 10)
+    return isNaN(stored) ? DEFAULT_WIDTH : Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, stored))
+  })
+  const dragStartRef = useRef<{ x: number; width: number } | null>(null)
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragStartRef.current = { x: e.clientX, width: panelWidth }
+    function onMouseMove(ev: MouseEvent) {
+      if (!dragStartRef.current) return
+      const next = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH,
+        dragStartRef.current.width + ev.clientX - dragStartRef.current.x))
+      setPanelWidth(next)
+      localStorage.setItem('sqlPanelWidth', String(Math.round(next)))
+    }
+    function onMouseUp() {
+      dragStartRef.current = null
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }, [panelWidth])
 
   // Builder gets its own snapshot of SQL on every tab switch to 'builder'
   const [builderKey, setBuilderKey]         = useState(0)
@@ -135,7 +162,10 @@ export function SqlPanel() {
 
   // ── Expanded sidebar ──────────────────────────────────────────────────────
   return (
-    <aside className="w-72 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col overflow-hidden">
+    <aside
+      style={{ width: panelWidth }}
+      className="flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col overflow-hidden relative"
+    >
 
       {/* Header: tabs + collapse */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
@@ -241,6 +271,12 @@ export function SqlPanel() {
         )}
       </div>
 
+      {/* Right-edge resize handle */}
+      <div
+        onMouseDown={handleResizeMouseDown}
+        className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-indigo-400 dark:hover:bg-indigo-600 transition-colors z-10"
+        title="Drag to resize"
+      />
     </aside>
   )
 }

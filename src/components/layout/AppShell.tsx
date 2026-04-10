@@ -1,4 +1,5 @@
 import { useAppStore } from '../../store/useAppStore'
+import { Link } from 'react-router-dom'
 
 const GitHubIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -50,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="h-screen overflow-hidden bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
       <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 z-10 flex-shrink-0">
         <div className="max-w-screen-2xl mx-auto px-4 h-12 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <svg viewBox="0 0 32 32" className="w-7 h-7" fill="none">
               <rect width="32" height="32" rx="6" fill="#6366f1" />
               <path d="M8 10h6a4 4 0 0 1 0 8H8V10z" fill="white" />
@@ -59,7 +60,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <rect x="16" y="14" width="8" height="2" rx="1" fill="white" />
             </svg>
             <span className="font-semibold text-sm tracking-tight">Parquet Explorer</span>
-          </div>
+          </Link>
 
           <div className="flex items-center gap-2">
             <button
