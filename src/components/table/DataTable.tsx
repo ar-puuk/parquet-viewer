@@ -6,6 +6,8 @@ import { getDefaultColWidth, isNumericType } from '../../utils/formatters'
 
 const ROW_HEIGHT = 35
 
+type SortDir = 'asc' | 'desc'
+
 export function DataTable() {
   const schema          = useAppStore((s) => s.schema)
   const queryResult     = useAppStore((s) => s.queryResult)
@@ -16,8 +18,44 @@ export function DataTable() {
 
   const scrollRef  = useRef<HTMLDivElement>(null)
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
 
-  const rows = queryResult?.rows ?? []
+  const rawRows = queryResult?.rows ?? []
+
+  // Reset sort when query result changes
+  useEffect(() => {
+    setSortCol(null)
+    setSortDir('asc')
+  }, [queryResult])
+
+  const rows = useMemo(() => {
+    if (!sortCol) return rawRows
+    return [...rawRows].sort((a, b) => {
+      const av = a[sortCol]
+      const bv = b[sortCol]
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [rawRows, sortCol, sortDir])
+
+  const handleHeaderClick = useCallback((colName: string) => {
+    setSortCol((prev) => {
+      if (prev !== colName) { setSortDir('asc'); return colName }
+      setSortDir((d) => {
+        if (d === 'asc') return 'desc'
+        // desc → clear sort
+        setSortCol(null)
+        return 'asc'
+      })
+      return colName
+    })
+  }, [])
 
   // Derive display columns from query result columns, excluding __row_id.
   // Cross-reference with schema for type info; fall back to value inference.
@@ -118,21 +156,36 @@ export function DataTable() {
             {columns.map((col) => {
               const w        = getWidth(col.name)
               const isNum    = isNumericType(col.type)
+              const isSorted = sortCol === col.name
               return (
                 <div
                   key={col.name}
                   style={{ width: w, minWidth: w, maxWidth: w }}
                   className="relative flex items-center group border-r border-gray-200 dark:border-gray-700 last:border-r-0 flex-shrink-0"
                 >
-                  <div className={`flex-1 flex items-center px-2 py-2 overflow-hidden ${isNum ? 'justify-end' : ''}`}>
-                    <span className="text-xs font-medium uppercase tracking-wide truncate text-gray-500 dark:text-gray-400">
+                  <button
+                    onClick={() => handleHeaderClick(col.name)}
+                    className={`flex-1 flex items-center gap-1 px-2 py-2 overflow-hidden text-left w-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${isNum ? 'flex-row-reverse' : ''}`}
+                  >
+                    <span className={`text-xs font-medium uppercase tracking-wide truncate ${isSorted ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
                       {col.name}
                     </span>
-                  </div>
+                    {isSorted ? (
+                      <svg viewBox="0 0 10 12" className="w-2.5 h-3 flex-shrink-0 text-indigo-500 dark:text-indigo-400" fill="currentColor">
+                        {sortDir === 'asc'
+                          ? <path d="M5 1 L9 6 H6 V11 H4 V6 H1 Z" />
+                          : <path d="M5 11 L1 6 H4 V1 H6 V6 H9 Z" />}
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 10 12" className="w-2.5 h-3 flex-shrink-0 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="currentColor">
+                        <path d="M5 1 L9 6 H6 V11 H4 V6 H1 Z" />
+                      </svg>
+                    )}
+                  </button>
                   {/* Resize handle */}
                   <div
                     onMouseDown={(e) => { e.preventDefault(); startResize(col.name, e.clientX) }}
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize opacity-0 group-hover:opacity-100 bg-indigo-400 transition-opacity"
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize opacity-0 group-hover:opacity-100 bg-indigo-400 transition-opacity z-10"
                   />
                 </div>
               )
