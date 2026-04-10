@@ -16,11 +16,12 @@ const INTERACTIVE_LAYERS = [LAYER_CIRCLE, LAYER_LINE, LAYER_FILL]
 
 interface Props {
   features: GeoFeature[]
-  fitKey?: number | string
+  /** Fit map to this bbox [minx, miny, maxx, maxy] on first mount (from metadata). */
+  initialBbox?: [number, number, number, number] | null
   onFeatureClick?: (rowId: number) => void
 }
 
-export function MapView({ features, fitKey, onFeatureClick }: Props) {
+export function MapView({ features, initialBbox, onFeatureClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -190,12 +191,28 @@ export function MapView({ features, fitKey, onFeatureClick }: Props) {
     return () => { if (rafId) cancelAnimationFrame(rafId) }
   }, [geojson])
 
-  // ── Fit bounds on first load and whenever fitKey changes (page turn) ────
-  const prevFitKeyRef = useRef<number | string | undefined>(undefined)
+  // ── Fit bounds: metadata bbox on mount, then features when first loaded ──
+  const hasFitRef = useRef(false)
+
+  // 1. If we have a metadata bbox, fit immediately when map is ready
+  useEffect(() => {
+    if (!initialBbox || hasFitRef.current) return
+    const map = mapRef.current
+    if (!map) return
+    const fit = () => {
+      hasFitRef.current = true
+      const [minx, miny, maxx, maxy] = initialBbox
+      map.fitBounds([[minx, miny], [maxx, maxy]], { padding: 40, maxZoom: 14, duration: 600 })
+    }
+    if (map.isStyleLoaded()) fit()
+    else map.once('style.load', fit)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialBbox])
+
+  // 2. When features first arrive (after query), fit to their actual bounds
+  //    (more precise than the metadata bbox, and handles the no-bbox case)
   useEffect(() => {
     if (features.length === 0) return
-    if (prevFitKeyRef.current === fitKey && fitKey !== undefined) return
-    prevFitKeyRef.current = fitKey
     const map = mapRef.current
     if (!map) return
     try {
@@ -207,8 +224,9 @@ export function MapView({ features, fitKey, onFeatureClick }: Props) {
         map.fitBounds(bounds, { padding: 40, maxZoom: 14, duration: 800 })
       }
     } catch { /* ignore */ }
+  // Only refit when the feature set identity changes (new query result)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features, fitKey])
+  }, [features])
 
   // ── Hover feature-state ──────────────────────────────────────────────────
   useEffect(() => {

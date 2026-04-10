@@ -41,40 +41,50 @@ Three methods, all supported from day one (Phases 1–2):
 2. **S3 URL** — accepts both `s3://bucket/key` and `https://bucket.s3.amazonaws.com/key` forms. Normalize `s3://` to virtual-hosted-style HTTPS. Public buckets only — no credentials. DuckDB handles HTTP range requests natively so only needed row groups are fetched.
 3. **Public HTTP/HTTPS URL** — paste any publicly accessible URL. Same DuckDB range request behavior.
 
-### Data loading strategy (smart streaming)
+### Data loading strategy (query-first)
 
 1. **Metadata first** — read parquet footer immediately: column names, types, row count, row groups, key-value metadata. Render schema panel before any row data.
-2. **Preview on load** — fetch first 500 rows via `LIMIT 500` for instant table render.
-3. **Lazy pagination** — subsequent pages fetched on demand via `LIMIT/OFFSET` as user scrolls. Never load the full file unless the user explicitly requests it.
+2. **Auto-run default query** — immediately after metadata loads, auto-execute `SELECT * FROM data LIMIT 1000` (BLOB columns auto-excluded via `EXCLUDE`). Table and map populate from this result.
+3. **User-driven queries** — the SQL panel is always visible. Users edit and re-run queries; each run replaces the current result. No pagination — the LIMIT in the SQL controls row count.
+4. **No background prefetch** — data is only fetched when a query runs. The schema sidebar shows counts and stats from parquet metadata alone.
 
 ### Spatial detection (two tiers)
 
-- **Tier 1 (GeoParquet spec):** check parquet key-value metadata for a `geo` key via `parquet_kv_metadata()`.
+- **Tier 1 (GeoParquet spec):** check parquet key-value metadata for a `geo` key via `parquet_kv_metadata()`. Also extracts `bbox` for immediate map viewport fit.
 - **Tier 2 (column name heuristics):** scan for columns named `geometry`, `geom`, `wkb_geometry`, `wkt`, `shape`.
 - **Encoding support:** WKB (BLOB column type) and WKT (VARCHAR column type).
 - **CRS:** assume WGS84 if not specified. Show a warning banner if a different CRS is detected in metadata.
 - **DuckDB spatial extension** loaded lazily — only when a spatial file is detected. Tabular-only users pay zero cost.
 
-### Layout — tabular files
+### Layout states
 
-Full-width table. Collapsible schema sidebar on the left. SQL panel slides up from the bottom.
+Five distinct states based on file type and query status:
 
-### Layout — spatial files
+**State 1 — No file:** Drop zone (full screen).
 
-- **Default:** map takes top 65% of viewport, table panel scrolls below.
-- **Resize handle** between map and table — user can drag to any split.
-- **Collapse buttons:** full map, 65/35 default, full table.
-- **Preference persisted** in `localStorage`.
-- Call `map.resize()` whenever the panel size changes to prevent MapLibre tile seams.
+**State 2 — Spatial file, no query run yet:**
+- Schema sidebar (left) + SQL panel (open, default query) + Map (right, fit to metadata bbox, no features).
+
+**State 3 — Spatial file, query has run:**
+- Schema sidebar + SQL panel (collapsed to 1-line bar) + SplitLayout: Map (features from query, 65%) / Results table (35%).
+
+**State 4 — Tabular file, no query run yet:**
+- Schema sidebar + SQL panel (open, default query) + "Run the query above to load data" empty state.
+
+**State 5 — Tabular file, query has run:**
+- Schema sidebar + SQL panel (collapsed) + Results table (full height).
 
 ### Map experience
 
-**v1 (Phase 4–5):**
+**v1 (current):**
+- Map only shown for spatial files.
+- On file load: map fits to `bbox` from GeoParquet metadata (instant, no data query). No features shown yet.
+- After query runs: companion geo query runs in parallel, features appear on map.
+- Companion geo strategy: if geometry column is in query result, wrap the user's SQL; otherwise re-query base table with same LIMIT.
 - Render points, lines, polygons — auto-styled by geometry type.
-- Click feature → attribute popup (all non-geometry columns shown as key/value, geometry column shown as `[geometry]`).
-- Fit map bounds to dataset bounding box on load.
+- Click feature → attribute popup (all non-geometry columns shown as key/value).
 - Dark map style when app is in dark mode.
-- Bidirectional row ↔ feature sync (see Phase 5 spec below).
+- Bidirectional row ↔ feature sync (Phase 5).
 
 **v2 (Phase 8 — future):**
 - Color-by-column (numeric and categorical).
@@ -82,17 +92,18 @@ Full-width table. Collapsible schema sidebar on the left. SQL panel slides up fr
 - Opacity slider per layer.
 - Automatic legend.
 
-### SQL interface
+### SQL interface (implemented in Phase 3+6 merge)
 
-**v1 (Phase 6):**
-- CodeMirror 6 editor, SQL syntax highlighting and autocomplete.
+- CodeMirror 6 editor, SQL syntax highlighting.
 - Table pre-aliased as `data` — users always write `SELECT * FROM data WHERE ...`.
-- Default query pre-filled: `SELECT * FROM data LIMIT 100`.
+- Default query auto-generated from schema: `SELECT * [EXCLUDE (blob_cols)] FROM data LIMIT 1000`.
+- Auto-runs on file load; user can edit and re-run at any time.
 - Run via button or `Ctrl/Cmd+Enter`.
-- Results replace table view with a "back to full data" breadcrumb.
+- Results replace current table + map.
 - Execution time shown in ms.
-- Errors shown inline with line highlighting.
-- Query history: last 20 queries in `sessionStorage`, navigable with up/down arrow.
+- Errors shown inline below editor.
+- SQL panel collapses to 1-line bar after first run; "Edit" button re-expands it.
+- Query history (Phase 7 — future): last 20 queries in `sessionStorage`.
 
 **v2 (Phase 7 — future):**
 - Visual query builder: column select, filter rows, sort, limit, group-by + aggregate.
@@ -261,25 +272,33 @@ Tasks:
 
 ---
 
-### Phase 3 — Paginated table view
-**Deployable result:** Fully working tabular parquet explorer. Large files scroll smoothly. Column sorting works. Schema sidebar shows per-column stats on click.
+### Phase 3 — SQL panel + query-driven table *(merged with old Phase 6)*
+**Deployable result:** Load any parquet file → schema appears, default query auto-runs, results appear in table. User can edit SQL and re-run. Spatial files show map with features from query result.
+
+Architecture: **query-first** — no data is fetched until a query runs. The SQL panel is always visible. Results live in `queryResult` Zustand state; both DataTable and MapView read from it.
 
 Tasks:
-- [ ] Install `@tanstack/react-virtual`
-- [ ] Create `useTableData` hook: fetches pages via `SELECT ROW_NUMBER() OVER () AS __row_id, * FROM data LIMIT 500 OFFSET ?`
-- [ ] Build `DataTable` component with `@tanstack/react-virtual` row virtualization
-- [ ] Sticky column header row with sort controls (click column name → asc/desc toggle)
-- [ ] Type-aware `TableCell`: numbers right-aligned, booleans as badges, nulls as muted `—`, geometry columns as `[geometry]`
-- [ ] Column resize handles
-- [ ] "Showing X of Y rows" counter, "Load all" button (with warning for files > 100k rows)
-- [ ] Infinite scroll: detect scroll near bottom → fetch next 500 rows, append to table
-- [ ] On column click in `SchemaSidebar`: run `SELECT MIN(col), MAX(col), COUNT(*) FILTER (col IS NULL), COUNT(DISTINCT col) FROM (SELECT * FROM data LIMIT 10000)` → show stats inline
+- [x] Install `@tanstack/react-virtual`, `codemirror`, `@codemirror/lang-sql`, `@codemirror/theme-one-dark`
+- [x] Add `queryResult: QueryResult | null` to Zustand store; clear on file unload
+- [x] Create `useSqlQuery` hook: runs SQL via `queryDBWithColumns`, wraps query with `ROW_NUMBER() OVER ()` to inject `__row_id`, stores result in store
+- [x] Create `SqlEditor` component: CodeMirror 6, SQL syntax highlighting, `Ctrl/Cmd+Enter` keybinding, dark/light theme sync
+- [x] Create `SqlPanel` component:
+  - Generates schema-aware default query (excludes BLOB columns via `EXCLUDE`)
+  - Auto-runs default query on file load
+  - Expanded state: editor + Run button + inline error
+  - Collapsed state: 1-line query preview + row count + execution time + "Edit" button
+- [x] Rewrite `DataTable`: reads from `queryResult` store slice, no own fetching, no pagination, virtualised over result rows
+- [x] `useGeoData` rewritten: watches `queryResult`, runs companion geo query, wraps user SQL if geometry column present
+- [x] `GeoInfo` extended with optional `bbox` field (parsed from GeoParquet metadata)
+- [x] `MapView` fits to metadata bbox on load; re-fits to feature bounds after first query
+- [x] Five-state layout in `App.tsx` (see "Layout states" section above)
 
 **Verify before moving on:**
-- Open a 1M+ row parquet file — table renders first 500 rows in < 1s
-- Scrolling to the bottom triggers the next page load
-- Sorting a column re-queries and re-renders correctly
-- `__row_id` is present in query results but hidden from table columns displayed to user
+- Load tabular file → schema appears, default query auto-runs, table shows 1000 rows
+- Load spatial file → map appears immediately fit to bbox, then features populate
+- Edit SQL and re-run → results replace previous table + map
+- Bad SQL → error shown inline, no crash
+- `__row_id` present in results but hidden from table display
 
 ---
 
@@ -347,41 +366,20 @@ Tasks:
 
 ---
 
-### Phase 6 — SQL query panel
-**Deployable result:** Write and run custom SQL against the loaded file. Results replace table view. Query history works. Errors are shown inline.
+### Phase 6 — SQL enhancements *(core SQL panel done in Phase 3)*
+**Deployable result:** SQL autocomplete seeded from schema. Query history navigable with up/down arrow.
 
 Tasks:
-- [ ] Install `@codemirror/lang-sql`, `@codemirror/view`, `@codemirror/state`, `@codemirror/theme-one-dark` (or similar dark theme)
-- [ ] Create `SqlEditor` component:
-  - CodeMirror 6 with SQL language support
-  - Autocomplete: seed with `data` table name + current schema column names
-  - Dark/light theme synced with app theme
-  - Default content: `SELECT * FROM data LIMIT 100`
-  - `Ctrl/Cmd+Enter` keybinding to run query
-  - Re-seed autocomplete when new file is loaded
-- [ ] Create `SqlPanel` wrapper:
-  - Slides up from bottom of screen (CSS transition, not display:none)
-  - Drag handle to resize panel height
-  - Toggle button in toolbar with keyboard shortcut hint (`⌘K` or similar)
-  - Persist open/closed + height in `localStorage`
-- [ ] Query execution:
-  - Run via `useDuckDB` query helper
-  - Results stored in a separate state slice (not the main table data)
-  - Results feed into `DataTable` via a "query results mode" prop
-  - Show row count + execution time in ms below editor
-  - "Back to full data" breadcrumb/button above table when in results mode
-- [ ] Error handling:
-  - DuckDB errors shown inline below the editor
-  - Highlight the error line in CodeMirror if line number is available
-- [ ] Query history:
-  - Last 20 queries in `sessionStorage`
-  - Up/down arrow navigates history when editor is focused
+- [ ] Autocomplete: seed CodeMirror SQL extension with `data` table name + current schema column names; re-seed on new file load
+- [ ] Query history: last 20 queries in `sessionStorage`; up/down arrow in editor navigates history
+- [ ] Resizable SQL panel height (drag handle on bottom edge)
+- [ ] Persist panel open/closed state and height in `localStorage`
 
 **Verify before moving on:**
-- Type `SELECT COUNT(*) FROM data` → run → result table shows 1 row with count
-- Bad SQL → error appears inline, no crash
-- Up arrow in editor → previous query restores
-- SQL panel collapse/expand is smooth
+- Type `sel` in editor → `SELECT` autocomplete suggestion appears
+- Type column name prefix → matching column names suggested
+- Run a query, then press up arrow → previous query restores
+- Resize SQL panel, reload page → height persists
 
 ---
 

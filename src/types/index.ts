@@ -27,4 +27,14 @@ export interface GeoInfo {
   /** Raw CRS string from metadata (null = WGS84 assumed) */
   crsString: string | null
   isWGS84: boolean
+  /** Bounding box from GeoParquet metadata [minx, miny, maxx, maxy], if present */
+  bbox: [number, number, number, number] | null
+}
+
+export interface QueryResult {
+  rows: Record<string, unknown>[]
+  /** Column names in result order */
+  columns: string[]
+  sql: string
+  executionMs: number
 }

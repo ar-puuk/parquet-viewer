@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { queryDB } from './useDuckDB'
+import { useAppStore } from '../store/useAppStore'
 import type { GeoInfo } from '../types'
 
 export interface GeoFeature {
@@ -10,28 +11,40 @@ export interface GeoFeature {
 
 export interface GeoDataResult {
   features: GeoFeature[]
-  totalCount: number
   loading: boolean
   error: string | null
 }
 
-export const GEO_PAGE_SIZE = 200
+/**
+ * Runs a companion geometry query whenever the queryResult changes.
+ *
+ * Strategy:
+ *   1. Use the user's SQL as a subquery — include the geometry column so we
+ *      can convert it, while keeping the same WHERE / ORDER / LIMIT.
+ *   2. If the geometry column was excluded from the user's query, fall back to
+ *      re-querying with the same LIMIT directly from `data`.
+ *
+ * The __row_id in the geo result matches the __row_id in queryResult rows so
+ * Phase 5 map↔table sync can correlate them.
+ */
+export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
+  const queryResult = useAppStore((s) => s.queryResult)
+  const schema      = useAppStore((s) => s.schema)
 
-export function useGeoData(
-  geoInfo: GeoInfo | null,
-  schema: { name: string; type: string }[] | null,
-  page: number,
-): GeoDataResult {
   const [features, setFeatures] = useState<GeoFeature[]>([])
-  const [totalCount, setTotalCount] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
   const sessionRef = useRef(0)
 
   useEffect(() => {
     if (!geoInfo || !schema) {
       setFeatures([])
-      setTotalCount(0)
+      return
+    }
+
+    // No query result yet — show nothing on map (user hasn't run a query)
+    if (!queryResult) {
+      setFeatures([])
       return
     }
 
@@ -40,62 +53,66 @@ export function useGeoData(
     setLoading(true)
     setError(null)
 
+    const geo = geoInfo  // narrow to non-null for use inside async closure
+    const geoExpr =
+      geo.encoding === 'wkb'
+        ? `ST_AsGeoJSON(ST_GeomFromWKB("${geo.geometryColumn}"))`
+        : `ST_AsGeoJSON(ST_GeomFromText("${geo.geometryColumn}"))`
+
+    // Property columns: everything except the geometry column and __row_id
     const propCols = schema.filter(
       (c) =>
-        c.name !== geoInfo.geometryColumn &&
+        c.name !== geo.geometryColumn &&
         c.name !== '__row_id' &&
         c.type.split('(')[0].toUpperCase().trim() !== 'BLOB'
     )
-
     const propSelect = propCols.map((c) => `"${c.name}"`).join(', ')
-    const geoExpr =
-      geoInfo.encoding === 'wkb'
-        ? `ST_AsGeoJSON(ST_GeomFromWKB("${geoInfo.geometryColumn}"))`
-        : `ST_AsGeoJSON(ST_GeomFromText("${geoInfo.geometryColumn}"))`
 
-    // Build the inner SELECT for the subquery — must include the geometry column
-    // and all property columns so the outer query can reference them by name.
-    const innerCols = [
-      `"${geoInfo.geometryColumn}"`,
-      ...propCols.map((c) => `"${c.name}"`),
-    ].join(', ')
+    // Check whether the geometry column appears in the query result columns.
+    // If it does, we can build the geo query from the user's SQL directly.
+    const geoInResult = queryResult.columns.includes(geo.geometryColumn)
 
-    const offset = page * GEO_PAGE_SIZE
+    // Number of rows in the query result — use same limit for geo companion.
+    const limit = queryResult.rows.length || 1000
 
-    async function fetchPage() {
+    async function fetchFeatures() {
       try {
-        // IMPORTANT: wrap the parquet read + LIMIT/OFFSET in a subquery so that
-        // DuckDB applies the row limit BEFORE running ST_AsGeoJSON and ROW_NUMBER().
-        // Without this, DuckDB's window-function pipeline processes ALL rows first
-        // (e.g. all 5000 geometries) and only then applies LIMIT 200 — causing
-        // multi-second main-thread message handler violations.
-        const innerFrom = `(SELECT ${innerCols} FROM data LIMIT ${GEO_PAGE_SIZE} OFFSET ${offset}) AS _page`
+        let sql: string
 
-        // Fetch total count and page data in parallel
-        const [countRows, rows] = await Promise.all([
-          page === 0 ? queryDB('SELECT COUNT(*) AS cnt FROM data') : Promise.resolve(null),
-          queryDB(
-            propSelect
-              ? `SELECT (ROW_NUMBER() OVER () - 1 + ${offset}) AS __row_id,
-                        ${geoExpr} AS __geojson,
-                        ${propSelect}
-                 FROM ${innerFrom}`
-              : `SELECT (ROW_NUMBER() OVER () - 1 + ${offset}) AS __row_id,
-                        ${geoExpr} AS __geojson
-                 FROM ${innerFrom}`
-          ),
-        ])
+        if (geoInResult) {
+          // Geometry column is present in the result — wrap the original query
+          // so the geometry data comes from the same filtered/ordered result set.
+          sql = propSelect
+            ? `SELECT (ROW_NUMBER() OVER () - 1) AS __row_id,
+                      ${geoExpr} AS __geojson,
+                      ${propSelect}
+               FROM (${queryResult!.sql}) AS _q`
+            : `SELECT (ROW_NUMBER() OVER () - 1) AS __row_id,
+                      ${geoExpr} AS __geojson
+               FROM (${queryResult!.sql}) AS _q`
+        } else {
+          // Geometry column was excluded from the user query (e.g. SELECT * EXCLUDE).
+          // Re-query the base table with the same limit so map ≈ table.
+          const innerCols = [
+            `"${geo.geometryColumn}"`,
+            ...propCols.map((c) => `"${c.name}"`),
+          ].join(', ')
+          sql = propSelect
+            ? `SELECT (ROW_NUMBER() OVER () - 1) AS __row_id,
+                      ${geoExpr} AS __geojson,
+                      ${propSelect}
+               FROM (SELECT ${innerCols} FROM data LIMIT ${limit}) AS _page`
+            : `SELECT (ROW_NUMBER() OVER () - 1) AS __row_id,
+                      ${geoExpr} AS __geojson
+               FROM (SELECT "${geo.geometryColumn}" FROM data LIMIT ${limit}) AS _page`
+        }
 
+        const rows = await queryDB(sql)
         if (session !== sessionRef.current) return
 
-        // Yield before processing the (potentially large) DuckDB result payload
-        // so we don't block the main thread inside the message handler.
+        // Yield before processing to avoid blocking the main thread
         await new Promise<void>((r) => setTimeout(r, 0))
         if (session !== sessionRef.current) return
-
-        if (countRows) {
-          setTotalCount(Number(countRows[0]?.['cnt'] ?? 0))
-        }
 
         const pageFeatures: GeoFeature[] = []
         for (const row of rows) {
@@ -117,14 +134,8 @@ export function useGeoData(
       }
     }
 
-    fetchPage()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geoInfo, schema, page])
+    fetchFeatures()
+  }, [geoInfo, schema, queryResult])
 
-  // When geoInfo/schema change (new file), reset total count
-  useEffect(() => {
-    setTotalCount(0)
-  }, [geoInfo, schema])
-
-  return { features, totalCount, loading, error }
+  return { features, loading, error }
 }

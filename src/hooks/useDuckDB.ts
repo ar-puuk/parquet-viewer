@@ -86,6 +86,20 @@ export async function queryDB(sql: string): Promise<Record<string, unknown>[]> {
   return result.toArray().map((row) => rowToObject(row as Record<string, unknown>, fields))
 }
 
+/** Like queryDB but also returns the column names in result order. */
+export async function queryDBWithColumns(sql: string): Promise<{
+  rows: Record<string, unknown>[]
+  columns: string[]
+}> {
+  if (!connInstance) throw new Error('DuckDB is not initialized yet')
+  const result = await connInstance.query(sql)
+  const fields = result.schema.fields
+  return {
+    rows: result.toArray().map((row) => rowToObject(row as Record<string, unknown>, fields)),
+    columns: fields.map((f) => f.name),
+  }
+}
+
 export function getDBInstance() {
   return dbInstance
 }

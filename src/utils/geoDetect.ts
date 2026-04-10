@@ -1,5 +1,5 @@
 import { queryDB } from '../hooks/useDuckDB'
-import type { ColumnInfo } from '../types'
+import type { ColumnInfo, GeoInfo } from '../types'
 
 const REGISTERED_NAME = 'data.parquet'
 
@@ -21,14 +21,6 @@ export async function ensureSpatialExtension(): Promise<void> {
     await queryDB('LOAD spatial')
     spatialLoaded = true
   }
-}
-
-export interface GeoInfo {
-  geometryColumn: string
-  encoding: 'wkb' | 'wkt'
-  /** Raw CRS string from metadata (null = WGS84 assumed) */
-  crsString: string | null
-  isWGS84: boolean
 }
 
 /**
@@ -69,7 +61,15 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
             ((crsObj?.components as Array<Record<string, unknown>>)?.[0]?.id as Record<string, unknown>)?.code
           isWGS84 = code == null || code === 4326 || code === '4326'
         }
-        return { geometryColumn: primaryCol, encoding, crsString, isWGS84 }
+        // Extract bounding box [minx, miny, maxx, maxy] from metadata if present
+        let bbox: [number, number, number, number] | null = null
+        const rawBbox = (colMeta as Record<string, unknown> | undefined)?.['bbox']
+        if (Array.isArray(rawBbox) && rawBbox.length === 4) {
+          const b = rawBbox.map(Number)
+          if (b.every(isFinite)) bbox = b as [number, number, number, number]
+        }
+
+        return { geometryColumn: primaryCol, encoding, crsString, isWGS84, bbox }
       }
     }
   } catch {
@@ -82,10 +82,10 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const upperType = col.type.split('(')[0].toUpperCase().trim()
 
     if (WKT_COLUMN_NAMES.has(lower) && upperType === 'VARCHAR') {
-      return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true }
+      return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true, bbox: null }
     }
     if (GEO_COLUMN_NAMES.has(lower) && upperType === 'BLOB') {
-      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true }
+      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null }
     }
   }
 
@@ -94,7 +94,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
     if (upperType === 'BLOB' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
-      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true }
+      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null }
     }
   }
 

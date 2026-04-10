@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActiveFile, ColumnInfo, FileStats, GeoInfo } from '../types'
+import type { ActiveFile, ColumnInfo, FileStats, GeoInfo, QueryResult } from '../types'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -18,6 +18,10 @@ interface AppStore {
   setFileStats: (stats: FileStats | null) => void
   setGeoInfo: (info: GeoInfo | null) => void
   clearFile: () => void
+
+  // Query result — populated by SQL panel, consumed by DataTable + MapView
+  queryResult: QueryResult | null
+  setQueryResult: (result: QueryResult | null) => void
 
   // Map ↔ table sync (Phase 5)
   hoveredRowId: number | null
@@ -66,7 +70,10 @@ export const useAppStore = create<AppStore>((set) => ({
   setSchema: (schema) => set({ schema }),
   setFileStats: (stats) => set({ fileStats: stats }),
   setGeoInfo: (info) => set({ geoInfo: info }),
-  clearFile: () => set({ activeFile: null, schema: null, fileStats: null, geoInfo: null }),
+  clearFile: () => set({ activeFile: null, schema: null, fileStats: null, geoInfo: null, queryResult: null }),
+
+  queryResult: null,
+  setQueryResult: (result) => set({ queryResult: result }),
 
   hoveredRowId: null,
   selectedRowId: null,
