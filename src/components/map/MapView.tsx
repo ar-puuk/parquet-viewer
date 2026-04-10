@@ -170,21 +170,24 @@ export function MapView({ features, fitKey, onFeatureClick }: Props) {
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
+    let rafId: number
 
     function pushData() {
-      if (!map) return
-      const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-      if (src) src.setData(geojson)
+      // Defer inside rAF so MapLibre's setData doesn't force a synchronous
+      // layout recalculation (forced reflow) during a JS task.
+      rafId = requestAnimationFrame(() => {
+        const src = mapRef.current?.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+        if (src) src.setData(geojson)
+      })
     }
 
     if (map.isStyleLoaded() && layersAddedRef.current) {
       pushData()
     } else {
-      map.once('style.load', () => {
-        // Give addLayers a tick to run first
-        setTimeout(pushData, 0)
-      })
+      map.once('style.load', () => setTimeout(pushData, 0))
     }
+
+    return () => { if (rafId) cancelAnimationFrame(rafId) }
   }, [geojson])
 
   // ── Fit bounds on first load and whenever fitKey changes (page turn) ────

@@ -15,7 +15,7 @@ export interface GeoDataResult {
   error: string | null
 }
 
-export const GEO_PAGE_SIZE = 1000
+export const GEO_PAGE_SIZE = 200
 
 export function useGeoData(
   geoInfo: GeoInfo | null,
@@ -74,6 +74,11 @@ export function useGeoData(
           ),
         ])
 
+        if (session !== sessionRef.current) return
+
+        // Yield before processing the (potentially large) DuckDB result payload
+        // so we don't block the main thread inside the message handler.
+        await new Promise<void>((r) => setTimeout(r, 0))
         if (session !== sessionRef.current) return
 
         if (countRows) {
