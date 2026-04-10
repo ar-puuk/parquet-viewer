@@ -7,8 +7,12 @@ import { getDefaultColWidth, isNumericType } from '../../utils/formatters'
 const ROW_HEIGHT = 35
 
 export function DataTable() {
-  const schema      = useAppStore((s) => s.schema)
-  const queryResult = useAppStore((s) => s.queryResult)
+  const schema          = useAppStore((s) => s.schema)
+  const queryResult     = useAppStore((s) => s.queryResult)
+  const hoveredRowId    = useAppStore((s) => s.hoveredRowId)
+  const selectedRowId   = useAppStore((s) => s.selectedRowId)
+  const setHoveredRowId = useAppStore((s) => s.setHoveredRowId)
+  const setSelectedRowId = useAppStore((s) => s.setSelectedRowId)
 
   const scrollRef  = useRef<HTMLDivElement>(null)
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
@@ -45,6 +49,16 @@ export function DataTable() {
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
   })
+
+  // Scroll the virtualizer to keep the selected row in view whenever
+  // selectedRowId changes (triggered by a map-feature click).
+  useEffect(() => {
+    if (selectedRowId == null) return
+    const idx = rows.findIndex((r) => Number(r.__row_id) === selectedRowId)
+    if (idx >= 0) rowVirtualizer.scrollToIndex(idx, { align: 'center' })
+  // rowVirtualizer instance is stable; rows identity changes when query runs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRowId])
 
   const startResize = useCallback((colName: string, startX: number) => {
     const startWidth = colWidths[colName] ?? 150
@@ -128,8 +142,11 @@ export function DataTable() {
           {/* Virtualised rows */}
           <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
             {rowVirtualizer.getVirtualItems().map((vRow) => {
-              const row    = rows[vRow.index]
-              const isEven = vRow.index % 2 === 0
+              const row        = rows[vRow.index]
+              const rowId      = row != null ? Number(row.__row_id) : null
+              const isEven     = vRow.index % 2 === 0
+              const isHovered  = rowId != null && rowId === hoveredRowId
+              const isSelected = rowId != null && rowId === selectedRowId
               return (
                 <div
                   key={vRow.key}
@@ -143,9 +160,18 @@ export function DataTable() {
                     transform: `translateY(${vRow.start}px)`,
                     minWidth: `${totalWidth}px`,
                   }}
-                  className={`flex border-b border-gray-100 dark:border-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors ${
-                    isEven ? 'bg-white dark:bg-gray-950' : 'bg-gray-50/50 dark:bg-gray-900/50'
+                  className={`flex border-b border-gray-100 dark:border-gray-800 cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'bg-indigo-100 dark:bg-indigo-900/60'
+                      : isHovered
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60'
+                      : isEven
+                      ? 'bg-white dark:bg-gray-950'
+                      : 'bg-gray-50/50 dark:bg-gray-900/50'
                   }`}
+                  onMouseEnter={() => rowId != null && setHoveredRowId(rowId)}
+                  onMouseLeave={() => setHoveredRowId(null)}
+                  onClick={() => rowId != null && setSelectedRowId(rowId)}
                 >
                   {columns.map((col) => {
                     const w = getWidth(col.name)

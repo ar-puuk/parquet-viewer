@@ -30,7 +30,13 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
 
   const theme = useAppStore((s) => s.theme)
   const hoveredRowId = useAppStore((s) => s.hoveredRowId)
+  const selectedRowId = useAppStore((s) => s.selectedRowId)
   const setHoveredRowId = useAppStore((s) => s.setHoveredRowId)
+
+  const prevSelectedRef = useRef<number | null>(null)
+  // Stable ref so fly-to effect can read current features without being a dep
+  const featuresRef = useRef(features)
+  featuresRef.current = features
 
   const isDark =
     theme === 'dark' ||
@@ -241,7 +247,40 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
     prevHoveredRef.current = hoveredRowId
   }, [hoveredRowId])
 
-  // ── Click handler ────────────────────────────────────────────────────────
+  // ── Selected feature-state ───────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.getSource(SOURCE_ID)) return
+    if (prevSelectedRef.current != null) {
+      map.setFeatureState({ source: SOURCE_ID, id: prevSelectedRef.current }, { selected: false })
+    }
+    if (selectedRowId != null) {
+      map.setFeatureState({ source: SOURCE_ID, id: selectedRowId }, { selected: true })
+    }
+    prevSelectedRef.current = selectedRowId
+  }, [selectedRowId])
+
+  // ── Fly to + popup when selectedRowId changes ────────────────────────────
+  useEffect(() => {
+    if (selectedRowId == null) return
+    const map = mapRef.current
+    if (!map) return
+    const feat = featuresRef.current.find((f) => f.__row_id === selectedRowId)
+    if (!feat) return
+    try {
+      const geom = JSON.parse(feat.geojson) as GeoJSON.Geometry
+      const center = getCenter(geom)
+      if (!center) return
+      map.flyTo({ center, zoom: Math.max(map.getZoom(), 12), duration: 600 })
+      if (popupRef.current) popupRef.current.remove()
+      popupRef.current = new maplibregl.Popup({ maxWidth: '320px' })
+        .setLngLat(center)
+        .setHTML(buildPopupHtml(feat.properties))
+        .addTo(map)
+    } catch { /* ignore malformed geometry */ }
+  }, [selectedRowId])
+
+  // ── Click handler: just set selectedRowId (effect above handles popup) ───
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -252,13 +291,6 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       const rowId = feat.id != null ? Number(feat.id) : null
       if (rowId == null) return
       onFeatureClick?.(rowId)
-      if (popupRef.current) popupRef.current.remove()
-      const currentMap = mapRef.current
-      if (!currentMap) return
-      popupRef.current = new maplibregl.Popup({ maxWidth: '320px' })
-        .setLngLat(e.lngLat)
-        .setHTML(buildPopupHtml(feat.properties ?? {}))
-        .addTo(currentMap)
     }
 
     INTERACTIVE_LAYERS.forEach((l) => map.on('click', l, handleClick))
@@ -295,6 +327,39 @@ function collectCoords(geom: GeoJSON.Geometry, bounds: maplibregl.LngLatBounds) 
           for (const c of ring) bounds.extend(c as [number, number]); break
     case 'GeometryCollection':
       for (const g of geom.geometries) collectCoords(g, bounds); break
+  }
+}
+
+function getCenter(geom: GeoJSON.Geometry): [number, number] | null {
+  switch (geom.type) {
+    case 'Point':
+      return geom.coordinates as [number, number]
+    case 'MultiPoint':
+    case 'LineString': {
+      const coords = geom.coordinates as [number, number][]
+      return coords[Math.floor(coords.length / 2)] ?? null
+    }
+    case 'MultiLineString':
+    case 'Polygon': {
+      const ring = geom.coordinates[0] as [number, number][]
+      if (!ring?.length) return null
+      return [
+        ring.reduce((s, c) => s + c[0], 0) / ring.length,
+        ring.reduce((s, c) => s + c[1], 0) / ring.length,
+      ]
+    }
+    case 'MultiPolygon': {
+      const ring = geom.coordinates[0]?.[0] as [number, number][] | undefined
+      if (!ring?.length) return null
+      return [
+        ring.reduce((s, c) => s + c[0], 0) / ring.length,
+        ring.reduce((s, c) => s + c[1], 0) / ring.length,
+      ]
+    }
+    case 'GeometryCollection':
+      return geom.geometries.length > 0 ? getCenter(geom.geometries[0]) : null
+    default:
+      return null
   }
 }
 

@@ -16,9 +16,9 @@ export function useSqlQuery() {
     const start = performance.now()
     try {
       // Wrap query so every result has a stable __row_id for Phase 5 map↔table sync.
-      // The subquery ensures ROW_NUMBER() only runs over the result rows, not the
-      // full table (same subquery optimisation used in useTableData / useGeoData).
-      const wrapped = `SELECT ROW_NUMBER() OVER () AS __row_id, _q.* FROM (${trimmed}) AS _q`
+      // 0-indexed (ROW_NUMBER() - 1) to match the __row_id produced by useGeoData,
+      // which also uses 0-indexed IDs so map features and table rows share the same key.
+      const wrapped = `SELECT (ROW_NUMBER() OVER () - 1) AS __row_id, _q.* FROM (${trimmed}) AS _q`
       const { rows, columns } = await queryDBWithColumns(wrapped)
       const executionMs = Math.round(performance.now() - start)
       setQueryResult({ rows, columns, sql: trimmed, executionMs })
