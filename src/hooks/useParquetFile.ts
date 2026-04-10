@@ -3,6 +3,7 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import { queryDB, getDBInstance, getConnection } from './useDuckDB'
 import { normalizeUrl } from '../utils/s3url'
 import { useAppStore } from '../store/useAppStore'
+import { detectGeo, ensureSpatialExtension } from '../utils/geoDetect'
 import type { ColumnInfo, FileStats } from '../types'
 
 const REGISTERED_NAME = 'data.parquet'
@@ -74,7 +75,7 @@ async function extractFileStats(fileSizeBytes: number | null): Promise<FileStats
 export function useParquetFile() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { setActiveFile, setSchema, setFileStats } = useAppStore()
+  const { setActiveFile, setSchema, setFileStats, setGeoInfo } = useAppStore()
 
   async function loadFile(file: File) {
     setLoading(true)
@@ -93,8 +94,12 @@ export function useParquetFile() {
         extractFileStats(file.size),
       ])
 
+      const geoInfo = await detectGeo(schema)
+      if (geoInfo) await ensureSpatialExtension()
+
       setSchema(schema)
       setFileStats(stats)
+      setGeoInfo(geoInfo)
       setActiveFile({ name: file.name, type: 'local', registeredAs: REGISTERED_NAME, fileSizeBytes: file.size })
     } catch (e) {
       setError(classifyError(e))
@@ -127,8 +132,12 @@ export function useParquetFile() {
         extractFileStats(null),
       ])
 
+      const geoInfo = await detectGeo(schema)
+      if (geoInfo) await ensureSpatialExtension()
+
       setSchema(schema)
       setFileStats(stats)
+      setGeoInfo(geoInfo)
       setActiveFile({ name: fileName, type: 'url', registeredAs: REGISTERED_NAME, fileSizeBytes: null })
     } catch (e) {
       setError(classifyError(e))

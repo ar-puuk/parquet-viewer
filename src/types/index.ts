@@ -20,3 +20,11 @@ export interface ActiveFile {
   registeredAs: string
   fileSizeBytes: number | null
 }
+
+export interface GeoInfo {
+  geometryColumn: string
+  encoding: 'wkb' | 'wkt'
+  /** Raw CRS string from metadata (null = WGS84 assumed) */
+  crsString: string | null
+  isWGS84: boolean
+}

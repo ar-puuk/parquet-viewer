@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActiveFile, ColumnInfo, FileStats } from '../types'
+import type { ActiveFile, ColumnInfo, FileStats, GeoInfo } from '../types'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -12,9 +12,11 @@ interface AppStore {
   activeFile: ActiveFile | null
   schema: ColumnInfo[] | null
   fileStats: FileStats | null
+  geoInfo: GeoInfo | null
   setActiveFile: (file: ActiveFile | null) => void
   setSchema: (schema: ColumnInfo[] | null) => void
   setFileStats: (stats: FileStats | null) => void
+  setGeoInfo: (info: GeoInfo | null) => void
   clearFile: () => void
 
   // Map ↔ table sync (Phase 5)
@@ -59,10 +61,12 @@ export const useAppStore = create<AppStore>((set) => ({
   activeFile: null,
   schema: null,
   fileStats: null,
+  geoInfo: null,
   setActiveFile: (file) => set({ activeFile: file }),
   setSchema: (schema) => set({ schema }),
   setFileStats: (stats) => set({ fileStats: stats }),
-  clearFile: () => set({ activeFile: null, schema: null, fileStats: null }),
+  setGeoInfo: (info) => set({ geoInfo: info }),
+  clearFile: () => set({ activeFile: null, schema: null, fileStats: null, geoInfo: null }),
 
   hoveredRowId: null,
   selectedRowId: null,
