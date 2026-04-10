@@ -15,7 +15,9 @@ export interface GeoDataResult {
   progress: number // 0–1
 }
 
-const CHUNK_SIZE = 1000
+const CHUNK_SIZE = 2000
+// Minimum ms between incremental React state pushes while loading
+const FLUSH_INTERVAL_MS = 600
 
 export function useGeoData(
   geoInfo: GeoInfo | null,
@@ -68,6 +70,7 @@ export function useGeoData(
 
         const allFeatures: GeoFeature[] = []
         let offset = 0
+        let lastFlush = Date.now()
 
         while (offset < total) {
           if (session !== sessionRef.current) return
@@ -99,12 +102,20 @@ export function useGeoData(
 
           offset += CHUNK_SIZE
           setProgress(Math.min(offset / total, 1))
-          // Yield partial results every chunk so map updates incrementally
-          setFeatures([...allFeatures])
+
+          // Push incremental update at most every FLUSH_INTERVAL_MS to avoid
+          // triggering a React re-render + MapLibre setData on every chunk.
+          const now = Date.now()
+          if (now - lastFlush >= FLUSH_INTERVAL_MS) {
+            lastFlush = now
+            // Snapshot — MapView reads this via useMemo, not a spread copy
+            setFeatures(allFeatures.slice())
+          }
         }
 
+        // Final flush with all features
+        setFeatures(allFeatures.slice())
         setProgress(1)
-        setFeatures(allFeatures)
       } catch (e) {
         if (session !== sessionRef.current) return
         setError(e instanceof Error ? e.message : String(e))

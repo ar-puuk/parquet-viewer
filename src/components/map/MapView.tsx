@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useAppStore } from '../../store/useAppStore'
@@ -12,6 +12,7 @@ const LAYER_CIRCLE = 'geo-circle'
 const LAYER_LINE = 'geo-line'
 const LAYER_FILL = 'geo-fill'
 const LAYER_FILL_OUTLINE = 'geo-fill-outline'
+const INTERACTIVE_LAYERS = [LAYER_CIRCLE, LAYER_LINE, LAYER_FILL]
 
 interface Props {
   features: GeoFeature[]
@@ -22,15 +23,34 @@ export function MapView({ features, onFeatureClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
+  const layersAddedRef = useRef(false)
+  const prevHoveredRef = useRef<number | null>(null)
+
   const theme = useAppStore((s) => s.theme)
   const hoveredRowId = useAppStore((s) => s.hoveredRowId)
   const setHoveredRowId = useAppStore((s) => s.setHoveredRowId)
-  const prevHoveredRef = useRef<number | null>(null)
 
-  // Determine effective dark mode
   const isDark =
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+  // ── Build GeoJSON once per features snapshot (not on every re-render) ─────
+  const geojson = useMemo<GeoJSON.FeatureCollection>(() => ({
+    type: 'FeatureCollection',
+    features: features.flatMap((f) => {
+      try {
+        const geometry = JSON.parse(f.geojson) as GeoJSON.Geometry
+        return [{
+          type: 'Feature' as const,
+          id: f.__row_id,
+          geometry,
+          properties: { ...f.properties, __row_id: f.__row_id },
+        }]
+      } catch {
+        return []
+      }
+    }),
+  }), [features])
 
   // ── Init map once ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -43,55 +63,35 @@ export function MapView({ features, onFeatureClick }: Props) {
     })
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
     mapRef.current = map
+    layersAddedRef.current = false
 
     return () => {
       map.remove()
       mapRef.current = null
+      layersAddedRef.current = false
     }
-  // Run only once — theme changes handled separately
+  // Run only once — isDark changes handled by separate effect
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Theme changes ────────────────────────────────────────────────────────
+  // ── Theme: swap style ────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
+    layersAddedRef.current = false // layers are wiped when style changes
     map.setStyle(isDark ? DARK_STYLE : LIGHT_STYLE)
   }, [isDark])
 
-  // ── Build GeoJSON and add/update source + layers ─────────────────────────
-  const updateSource = useCallback(() => {
-    const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return
+  // ── Add layers once after style loads; re-add after style swap ───────────
+  function addLayers(map: maplibregl.Map) {
+    if (map.getLayer(LAYER_CIRCLE)) return // already added
 
-    const geojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: features
-        .map((f) => {
-          try {
-            const geometry = JSON.parse(f.geojson) as GeoJSON.Geometry
-            return {
-              type: 'Feature' as const,
-              id: f.__row_id,
-              geometry,
-              properties: { ...f.properties, __row_id: f.__row_id },
-            }
-          } catch {
-            return null
-          }
-        })
-        .filter(Boolean) as GeoJSON.Feature[],
-    }
+    map.addSource(SOURCE_ID, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+      promoteId: '__row_id',
+    })
 
-    const existing = map.getSource(SOURCE_ID)
-    if (existing) {
-      ;(existing as maplibregl.GeoJSONSource).setData(geojson)
-      return
-    }
-
-    map.addSource(SOURCE_ID, { type: 'geojson', data: geojson, promoteId: '__row_id' })
-
-    // Circle layer for points
     map.addLayer({
       id: LAYER_CIRCLE,
       type: 'circle',
@@ -106,7 +106,6 @@ export function MapView({ features, onFeatureClick }: Props) {
       },
     })
 
-    // Line layer
     map.addLayer({
       id: LAYER_LINE,
       type: 'line',
@@ -119,7 +118,6 @@ export function MapView({ features, onFeatureClick }: Props) {
       },
     })
 
-    // Fill layer for polygons
     map.addLayer({
       id: LAYER_FILL,
       type: 'fill',
@@ -131,26 +129,18 @@ export function MapView({ features, onFeatureClick }: Props) {
       },
     })
 
-    // Fill outline
     map.addLayer({
       id: LAYER_FILL_OUTLINE,
       type: 'line',
       source: SOURCE_ID,
       filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
-      paint: {
-        'line-color': '#2563eb',
-        'line-width': 1,
-        'line-opacity': 0.8,
-      },
+      paint: { 'line-color': '#2563eb', 'line-width': 1, 'line-opacity': 0.8 },
     })
 
-    // Hover interaction
-    const interactiveLayers = [LAYER_CIRCLE, LAYER_LINE, LAYER_FILL]
-    interactiveLayers.forEach((layerId) => {
+    INTERACTIVE_LAYERS.forEach((layerId) => {
       map.on('mousemove', layerId, (e) => {
         map.getCanvas().style.cursor = 'pointer'
-        const feat = e.features?.[0]
-        const rowId = feat?.id != null ? Number(feat.id) : null
+        const rowId = e.features?.[0]?.id != null ? Number(e.features[0].id) : null
         setHoveredRowId(rowId)
       })
       map.on('mouseleave', layerId, () => {
@@ -158,49 +148,64 @@ export function MapView({ features, onFeatureClick }: Props) {
         setHoveredRowId(null)
       })
     })
-  }, [features, setHoveredRowId])
 
-  // Re-run updateSource when features change or style reloads
+    layersAddedRef.current = true
+  }
+
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
+    const init = () => addLayers(map)
     if (map.isStyleLoaded()) {
-      updateSource()
+      init()
     } else {
-      map.once('style.load', updateSource)
+      map.once('style.load', init)
     }
-  }, [features, updateSource])
+  // setHoveredRowId is stable; re-run whenever map is ready or style swaps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDark])
 
-  // Also re-run after theme (style) change
+  // ── Push GeoJSON data to source whenever it changes ──────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const handler = () => updateSource()
-    map.on('style.load', handler)
-    return () => { map.off('style.load', handler) }
-  }, [updateSource])
+
+    function pushData() {
+      if (!map) return
+      const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+      if (src) src.setData(geojson)
+    }
+
+    if (map.isStyleLoaded() && layersAddedRef.current) {
+      pushData()
+    } else {
+      map.once('style.load', () => {
+        // Give addLayers a tick to run first
+        setTimeout(pushData, 0)
+      })
+    }
+  }, [geojson])
 
   // ── Fit bounds when features first arrive ────────────────────────────────
+  const hasFitRef = useRef(false)
   useEffect(() => {
+    if (features.length === 0) { hasFitRef.current = false; return }
+    if (hasFitRef.current) return
     const map = mapRef.current
-    if (!map || features.length === 0) return
+    if (!map) return
+    hasFitRef.current = true
     try {
       const bounds = new maplibregl.LngLatBounds()
       for (const f of features) {
-        const geom = JSON.parse(f.geojson) as GeoJSON.Geometry
-        collectCoords(geom, bounds)
+        collectCoords(JSON.parse(f.geojson) as GeoJSON.Geometry, bounds)
       }
       if (!bounds.isEmpty()) {
         map.fitBounds(bounds, { padding: 40, maxZoom: 14, duration: 800 })
       }
-    } catch {
-      // ignore parse errors
-    }
-  // Only fit on first load (when features go from 0 → non-empty)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features.length > 0])
+    } catch { /* ignore */ }
+  }, [features])
 
-  // ── Feature state: hover ─────────────────────────────────────────────────
+  // ── Hover feature-state ──────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map || !map.getSource(SOURCE_ID)) return
@@ -213,11 +218,10 @@ export function MapView({ features, onFeatureClick }: Props) {
     prevHoveredRef.current = hoveredRowId
   }, [hoveredRowId])
 
-  // ── Click to select ──────────────────────────────────────────────────────
+  // ── Click handler ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const interactiveLayers = [LAYER_CIRCLE, LAYER_LINE, LAYER_FILL]
 
     function handleClick(e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) {
       const feat = e.features?.[0]
@@ -225,37 +229,26 @@ export function MapView({ features, onFeatureClick }: Props) {
       const rowId = feat.id != null ? Number(feat.id) : null
       if (rowId == null) return
       onFeatureClick?.(rowId)
-
-      // Show popup
-      const coords = e.lngLat
-      const props = feat.properties ?? {}
-      const html = buildPopupHtml(props)
       if (popupRef.current) popupRef.current.remove()
       const currentMap = mapRef.current
       if (!currentMap) return
       popupRef.current = new maplibregl.Popup({ maxWidth: '320px' })
-        .setLngLat(coords)
-        .setHTML(html)
+        .setLngLat(e.lngLat)
+        .setHTML(buildPopupHtml(feat.properties ?? {}))
         .addTo(currentMap)
     }
 
-    interactiveLayers.forEach((layerId) => {
-      map.on('click', layerId, handleClick)
-    })
-    return () => {
-      interactiveLayers.forEach((layerId) => {
-        map.off('click', layerId, handleClick)
-      })
-    }
+    INTERACTIVE_LAYERS.forEach((l) => map.on('click', l, handleClick))
+    return () => { INTERACTIVE_LAYERS.forEach((l) => map.off('click', l, handleClick)) }
   }, [onFeatureClick])
 
-  // ── ResizeObserver → map.resize() ────────────────────────────────────────
+  // ── ResizeObserver ────────────────────────────────────────────────────────
   useEffect(() => {
-    const container = containerRef.current
+    const el = containerRef.current
     const map = mapRef.current
-    if (!container || !map) return
+    if (!el || !map) return
     const ro = new ResizeObserver(() => map.resize())
-    ro.observe(container)
+    ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
@@ -267,25 +260,18 @@ export function MapView({ features, onFeatureClick }: Props) {
 function collectCoords(geom: GeoJSON.Geometry, bounds: maplibregl.LngLatBounds) {
   switch (geom.type) {
     case 'Point':
-      bounds.extend(geom.coordinates as [number, number])
-      break
-    case 'MultiPoint':
-    case 'LineString':
-      for (const c of geom.coordinates) bounds.extend(c as [number, number])
-      break
-    case 'MultiLineString':
-    case 'Polygon':
+      bounds.extend(geom.coordinates as [number, number]); break
+    case 'MultiPoint': case 'LineString':
+      for (const c of geom.coordinates) bounds.extend(c as [number, number]); break
+    case 'MultiLineString': case 'Polygon':
       for (const ring of geom.coordinates)
-        for (const c of ring) bounds.extend(c as [number, number])
-      break
+        for (const c of ring) bounds.extend(c as [number, number]); break
     case 'MultiPolygon':
       for (const poly of geom.coordinates)
         for (const ring of poly)
-          for (const c of ring) bounds.extend(c as [number, number])
-      break
+          for (const c of ring) bounds.extend(c as [number, number]); break
     case 'GeometryCollection':
-      for (const g of geom.geometries) collectCoords(g, bounds)
-      break
+      for (const g of geom.geometries) collectCoords(g, bounds); break
   }
 }
 
@@ -293,8 +279,13 @@ function buildPopupHtml(props: Record<string, unknown>): string {
   const rows = Object.entries(props)
     .filter(([k]) => k !== '__row_id')
     .map(([k, v]) => {
-      const display = v == null ? '<span style="opacity:0.4">null</span>' : escapeHtml(String(v))
-      return `<tr><td style="padding:2px 6px 2px 0;font-weight:500;white-space:nowrap;opacity:0.7">${escapeHtml(k)}</td><td style="padding:2px 0;word-break:break-all">${display}</td></tr>`
+      const display = v == null
+        ? '<span style="opacity:0.4">null</span>'
+        : escapeHtml(String(v))
+      return `<tr>
+        <td style="padding:2px 6px 2px 0;font-weight:500;white-space:nowrap;opacity:0.7">${escapeHtml(k)}</td>
+        <td style="padding:2px 0;word-break:break-all">${display}</td>
+      </tr>`
     })
     .join('')
   return `<div style="max-height:240px;overflow-y:auto;font-size:12px;font-family:monospace"><table>${rows}</table></div>`
