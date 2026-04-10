@@ -97,7 +97,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
       upperType === 'STRUCT' &&
       (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
     ) {
-      return { geometryColumn: col.name, encoding: 'struct', crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
 
     // WKT: VARCHAR columns with known WKT names, or geo-named VARCHAR columns
@@ -119,7 +119,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
       return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
     if (upperType === 'STRUCT' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
-      return { geometryColumn: col.name, encoding: 'struct', crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
     if (upperType === 'BLOB' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
       return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null }
@@ -135,7 +135,8 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
         upperType === 'VARCHAR' ? 'wkt' :
         upperType === 'GEOMETRY' ? 'native' :
         upperType === 'STRUCT' ? 'struct' : 'wkb'
-      return { geometryColumn: col.name, encoding, crsString: null, isWGS84: true, bbox: null, epsg: null }
+      const structType = encoding === 'struct' ? col.type : undefined
+      return { geometryColumn: col.name, encoding, structType, crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
   }
 

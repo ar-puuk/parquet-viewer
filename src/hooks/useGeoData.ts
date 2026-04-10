@@ -55,31 +55,32 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
 
     const geo = geoInfo  // narrow to non-null for use inside async closure
 
-    // Build the GeoJSON expression depending on encoding and whether reprojection
-    // is needed. DuckDB spatial has specific overload rules:
+    // Build the GeoJSON expression. Strategy per encoding:
     //
-    // 'native'  = real GEOMETRY column → ST_Transform/ST_AsGeoJSON work directly
-    // 'struct'  = GeoArrow alias (POINT_2D / POLYGON_2D / etc., reported as
-    //             STRUCT(x,y) / STRUCT(x,y)[][] in DESCRIBE):
-    //             • ST_AsGeoJSON("col")  works via type overloads — no cast needed
-    //             • CAST(…AS GEOMETRY) is unimplemented for these types
-    //             • ST_Transform(POLYGON_2D,…) has no overload either
-    //             → reprojection requires a GeoJSON round-trip:
-    //               ST_Transform(ST_GeomFromGeoJSON(ST_AsGeoJSON("col")),…)
-    // 'wkb'/'wkt' = binary/text → go through ST_GeomFromWKB / ST_GeomFromText
+    // 'native'  = DuckDB GEOMETRY type → use directly
+    // 'struct'  = GeoArrow struct alias (POINT_2D / POLYGON_2D / etc.).
+    //             DuckDB WASM has no cast to GEOMETRY and ST_AsGeoJSON only
+    //             accepts GEOMETRY in this build. Build WKT manually from the
+    //             struct coordinates using list_transform + list_aggregate,
+    //             then convert via ST_GeomFromText. The geometry type (POINT,
+    //             LINESTRING, POLYGON, MULTIPOLYGON) is inferred from the
+    //             array nesting depth of the column type.
+    // 'wkb'/'wkt' = binary/text → ST_GeomFromWKB / ST_GeomFromText
     const col = `"${geo.geometryColumn}"`
     const epsgFrom = geo.epsg != null && geo.epsg !== 4326 ? geo.epsg : null
 
     let geoExpr: string
     if (geo.encoding === 'native') {
+      const geomExpr = col
       geoExpr = epsgFrom
-        ? `ST_AsGeoJSON(ST_Transform(${col}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
-        : `ST_AsGeoJSON(${col})`
+        ? `ST_AsGeoJSON(ST_Transform(${geomExpr}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
+        : `ST_AsGeoJSON(${geomExpr})`
     } else if (geo.encoding === 'struct') {
+      const wktExpr = buildStructWktExpr(col, geo.structType ?? '')
+      const geomExpr = `ST_GeomFromText(${wktExpr})`
       geoExpr = epsgFrom
-        // Round-trip: struct → GeoJSON string → GEOMETRY → transform → GeoJSON
-        ? `ST_AsGeoJSON(ST_Transform(ST_GeomFromGeoJSON(ST_AsGeoJSON(${col})), 'EPSG:${epsgFrom}', 'EPSG:4326'))`
-        : `ST_AsGeoJSON(${col})`
+        ? `ST_AsGeoJSON(ST_Transform(${geomExpr}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
+        : `ST_AsGeoJSON(${geomExpr})`
     } else {
       const geomExpr = geo.encoding === 'wkt'
         ? `ST_GeomFromText(${col})`
@@ -168,4 +169,61 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
   }, [geoInfo, schema, queryResult])
 
   return { features, loading, error }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Build a DuckDB SQL expression that produces a WKT string from a GeoArrow
+ * struct column (POINT_2D / LINESTRING_2D / POLYGON_2D / MULTIPOLYGON_2D).
+ *
+ * DuckDB WASM does not support CAST(struct AS GEOMETRY) and ST_AsGeoJSON only
+ * accepts GEOMETRY in this build, so we reconstruct WKT using pure SQL list
+ * and string functions that work on the raw struct values.
+ *
+ * Depth is inferred from the number of [] pairs in the DuckDB type string:
+ *   0 = POINT_2D      (STRUCT(x, y))
+ *   1 = LINESTRING_2D (STRUCT(x, y)[])
+ *   2 = POLYGON_2D    (STRUCT(x, y)[][])
+ *   3 = MULTIPOLYGON  (STRUCT(x, y)[][][])
+ */
+function buildStructWktExpr(col: string, structType: string): string {
+  const depth = (structType.match(/\[\]/g) ?? []).length
+
+  // coord pair as "x y"
+  const coordPair = (pt: string) =>
+    `${pt}.x::VARCHAR || ' ' || ${pt}.y::VARCHAR`
+
+  // ring → "(x1 y1,x2 y2,...)"
+  const ringWkt = (ring: string) =>
+    `'(' || list_aggregate(list_transform(${ring}, _p -> ${coordPair('_p')}), 'string_agg', ',') || ')'`
+
+  switch (depth) {
+    case 0:
+      return `('POINT(' || ${coordPair(col)} || ')')`
+
+    case 1:
+      return `('LINESTRING(' || list_aggregate(list_transform(${col}, _p -> ${coordPair('_p')}), 'string_agg', ',') || ')')`
+
+    case 2:
+      return (
+        `('POLYGON(' || ` +
+        `list_aggregate(list_transform(${col}, _r -> ${ringWkt('_r')}), 'string_agg', ',') || ')')`
+      )
+
+    case 3:
+      return (
+        `('MULTIPOLYGON(' || ` +
+        `list_aggregate(list_transform(${col}, _o -> ` +
+          `'(' || list_aggregate(list_transform(_o, _r -> ${ringWkt('_r')}), 'string_agg', ',') || ')'), ` +
+        `'string_agg', ',') || ')')`
+      )
+
+    default:
+      // Unknown depth — fall back to polygon interpretation
+      return (
+        `('POLYGON(' || ` +
+        `list_aggregate(list_transform(${col}, _r -> ${ringWkt('_r')}), 'string_agg', ',') || ')')`
+      )
+  }
 }

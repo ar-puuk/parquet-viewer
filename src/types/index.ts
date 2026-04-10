@@ -27,10 +27,16 @@ export interface GeoInfo {
    * wkb    = BLOB binary (ST_GeomFromWKB)
    * wkt    = VARCHAR text (ST_GeomFromText)
    * native = DuckDB GEOMETRY type (ST_AsGeoJSON / ST_Transform directly)
-   * struct = GeoArrow struct alias (POINT_2D, POLYGON_2D, etc.) — ST_AsGeoJSON
-   *          works via overload; reprojection needs a GeoJSON round-trip
+   * struct = GeoArrow struct alias (POINT_2D / POLYGON_2D / etc.) —
+   *          DuckDB has no cast to GEOMETRY for these; WKT is built via
+   *          list_transform + list_aggregate, then ST_GeomFromText is used
    */
   encoding: 'wkb' | 'wkt' | 'native' | 'struct'
+  /**
+   * Raw DuckDB column type for 'struct' encoding (e.g. STRUCT(x DOUBLE, y DOUBLE)[][]).
+   * Used to derive nesting depth → geometry type for WKT construction.
+   */
+  structType?: string
   /** Raw CRS string from metadata (null = WGS84 assumed) */
   crsString: string | null
   isWGS84: boolean
