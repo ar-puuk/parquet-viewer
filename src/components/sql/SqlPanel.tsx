@@ -235,7 +235,9 @@ export function SqlPanel() {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
               </svg>
             ) : (
-              <span className="text-[10px]">▶</span>
+              <svg viewBox="0 0 10 10" className="w-3 h-3" fill="currentColor">
+              <path d="M2 1.5 L9 5 L2 8.5 Z"/>
+            </svg>
             )}
             Run
           </button>

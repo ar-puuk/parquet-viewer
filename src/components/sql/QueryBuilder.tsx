@@ -302,7 +302,7 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
   const activeFilters = state.filters.filter((f) => f.col && (f.op === 'IS NULL' || f.op === 'IS NOT NULL' || f.value.trim() !== ''))
 
   // Shared styles for selects/inputs inside cards
-  const cardSelect = 'bg-transparent text-[11px] focus:outline-none cursor-pointer text-gray-700 dark:text-gray-200'
+  const cardSelect = 'bg-gray-50 dark:bg-gray-900 text-[11px] focus:outline-none cursor-pointer text-gray-700 dark:text-gray-200'
   const addBtnCls  = 'text-[11px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors'
 
   return (
@@ -420,7 +420,7 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
               {state.aggregates.map((a) => (
                 <div key={a.id} className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5">
                   <select value={a.fn} onChange={(e) => patchAgg(a.id, { fn: e.target.value as AggFn })}
-                    className="w-16 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-transparent focus:outline-none cursor-pointer flex-shrink-0">
+                    className="w-16 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-gray-50 dark:bg-gray-900 focus:outline-none cursor-pointer flex-shrink-0">
                     {AGG_FNS.map((f) => <option key={f}>{f}</option>)}
                   </select>
                   <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">(</span>
