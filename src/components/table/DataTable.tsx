@@ -6,26 +6,24 @@ import { TableCell } from './TableCell'
 import { getDefaultColWidth } from '../../utils/formatters'
 
 const ROW_HEIGHT = 35
-const LOAD_ALL_WARNING_THRESHOLD = 100_000
-// Start fetching next page when this many rows from the end
-const PREFETCH_THRESHOLD = 40
+// Rows to prefetch beyond the visible window in each direction
+const LOOKAHEAD = 200
 
 export function DataTable() {
-  const schema = useAppStore((s) => s.schema)
-  const fileStats = useAppStore((s) => s.fileStats)
-  const { rows, loadingMore, loadingAll, hasMore, error, sort, setSort, fetchNextPage, loadAll } =
-    useTableData()
+  const schema   = useAppStore((s) => s.schema)
+  const {
+    totalRows, loadedCount, cacheVersion,
+    getRow, isRowLoading, prefetchRange,
+    isLoading, error, sort, setSort,
+  } = useTableData()
 
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef  = useRef<HTMLDivElement>(null)
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
-  const [showLoadAllWarning, setShowLoadAllWarning] = useState(false)
 
-  const totalRows = fileStats?.rowCount ?? 0
+  // Visible columns — __row_id is in every row for Phase 5 sync but never shown
+  const columns = schema?.filter((c) => c.name !== '__row_id') ?? []
 
-  // Visible columns — __row_id is kept in data for Phase 5 sync but never shown
-  const columns = schema?.filter((col) => col.name !== '__row_id') ?? []
-
-  // Initialise column widths from schema whenever schema changes
+  // Initialise default widths from schema
   useEffect(() => {
     if (!schema) return
     setColWidths(
@@ -37,28 +35,24 @@ export function DataTable() {
     )
   }, [schema])
 
-  function getWidth(name: string) {
-    return colWidths[name] ?? 150
-  }
-
-  const totalWidth = columns.reduce((sum, col) => sum + getWidth(col.name), 0)
+  const getWidth = (name: string) => colWidths[name] ?? 150
+  const totalWidth = columns.reduce((sum, c) => sum + getWidth(c.name), 0)
 
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: totalRows,           // ← full file size, not loaded rows
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
   })
 
-  // Infinite scroll: trigger fetchNextPage when near bottom
+  // Prefetch pages for currently visible rows + lookahead on both sides
   const virtualItems = rowVirtualizer.getVirtualItems()
   useEffect(() => {
-    if (!virtualItems.length || !hasMore || loadingMore || loadingAll) return
-    const lastIdx = virtualItems[virtualItems.length - 1].index
-    if (lastIdx >= rows.length - PREFETCH_THRESHOLD) {
-      fetchNextPage()
-    }
-  }, [virtualItems, rows.length, hasMore, loadingMore, loadingAll, fetchNextPage])
+    if (!virtualItems.length) return
+    const firstIdx = virtualItems[0].index
+    const lastIdx  = virtualItems[virtualItems.length - 1].index
+    prefetchRange(firstIdx - LOOKAHEAD, lastIdx + LOOKAHEAD)
+  }, [virtualItems, prefetchRange])
 
   // Column resize via mouse drag
   const startResize = useCallback((colName: string, startX: number) => {
@@ -75,55 +69,29 @@ export function DataTable() {
     document.addEventListener('mouseup', handleUp)
   }, [colWidths])
 
-  function handleLoadAll() {
-    if (totalRows > LOAD_ALL_WARNING_THRESHOLD) {
-      setShowLoadAllWarning(true)
-    } else {
-      loadAll()
-    }
-  }
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-950">
+
       {/* Status bar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 bg-gray-50 dark:bg-gray-900">
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          {loadingAll
-            ? `Loading… ${rows.length.toLocaleString()} / ${totalRows.toLocaleString()} rows`
-            : `${rows.length.toLocaleString()} of ${totalRows.toLocaleString()} rows`}
+          {loadedCount.toLocaleString()} of {totalRows.toLocaleString()} rows loaded
+          {isLoading && (
+            <span className="ml-2 inline-flex items-center gap-1 text-indigo-500 dark:text-indigo-400">
+              <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              fetching…
+            </span>
+          )}
         </span>
-        {hasMore && !loadingAll && (
-          <button
-            onClick={handleLoadAll}
-            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            Load all{totalRows > LOAD_ALL_WARNING_THRESHOLD ? ` (${(totalRows / 1000).toFixed(0)}k)` : ''}
-          </button>
+        {sort && (
+          <span className="text-xs text-indigo-500 dark:text-indigo-400">
+            Sorted by {sort.column} {sort.direction === 'asc' ? '↑' : '↓'}
+          </span>
         )}
       </div>
-
-      {/* Load-all warning */}
-      {showLoadAllWarning && (
-        <div className="flex items-center justify-between gap-4 px-3 py-2 bg-amber-50 dark:bg-amber-950 border-b border-amber-200 dark:border-amber-800 flex-shrink-0">
-          <p className="text-xs text-amber-700 dark:text-amber-300">
-            Loading {totalRows.toLocaleString()} rows may take a moment and use significant browser memory.
-          </p>
-          <div className="flex gap-3 text-xs font-medium flex-shrink-0">
-            <button
-              onClick={() => setShowLoadAllWarning(false)}
-              className="text-amber-600 dark:text-amber-400 hover:underline"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => { setShowLoadAllWarning(false); loadAll() }}
-              className="text-amber-800 dark:text-amber-200 hover:underline"
-            >
-              Load anyway
-            </button>
-          </div>
-        </div>
-      )}
 
       {error && (
         <div className="px-3 py-2 bg-red-50 dark:bg-red-950 text-xs text-red-600 dark:text-red-400 border-b border-red-200 dark:border-red-800 flex-shrink-0">
@@ -134,6 +102,7 @@ export function DataTable() {
       {/* Scrollable table */}
       <div ref={scrollRef} className="flex-1 overflow-auto">
         <div style={{ minWidth: `${totalWidth}px` }}>
+
           {/* Sticky header */}
           <div
             className="flex sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-200 dark:border-gray-700"
@@ -167,10 +136,7 @@ export function DataTable() {
                   </button>
                   {/* Resize handle */}
                   <div
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      startResize(col.name, e.clientX)
-                    }}
+                    onMouseDown={(e) => { e.preventDefault(); startResize(col.name, e.clientX) }}
                     className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize opacity-0 group-hover:opacity-100 bg-indigo-400 transition-opacity"
                   />
                 </div>
@@ -178,13 +144,13 @@ export function DataTable() {
             })}
           </div>
 
-          {/* Virtualized rows */}
-          <div
-            style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}
-          >
-            {rowVirtualizer.getVirtualItems().map((vRow) => {
-              const row = rows[vRow.index]
-              const isEven = vRow.index % 2 === 0
+          {/* Virtualised rows — count is totalRows, not loadedCount */}
+          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+            {virtualItems.map((vRow) => {
+              const row     = getRow(cacheVersion, vRow.index)
+              const loading = !row && isRowLoading(vRow.index)
+              const isEven  = vRow.index % 2 === 0
+
               return (
                 <div
                   key={vRow.key}
@@ -202,39 +168,41 @@ export function DataTable() {
                     isEven ? 'bg-white dark:bg-gray-950' : 'bg-gray-50/50 dark:bg-gray-900/50'
                   }`}
                 >
-                  {columns.map((col) => {
-                    const w = getWidth(col.name)
-                    return (
-                      <div
-                        key={col.name}
-                        style={{ width: w, minWidth: w, maxWidth: w, height: ROW_HEIGHT }}
-                        className="border-r border-gray-100 dark:border-gray-800 last:border-r-0 flex-shrink-0 overflow-hidden"
-                      >
-                        <TableCell
-                          value={row?.[col.name]}
-                          colName={col.name}
-                          colType={col.type}
+                  {loading ? (
+                    // Skeleton row while page is in-flight
+                    <div className="flex-1 flex items-center px-3 gap-3" style={{ height: ROW_HEIGHT }}>
+                      {columns.map((col) => (
+                        <div
+                          key={col.name}
+                          style={{ width: getWidth(col.name) - 16 }}
+                          className="h-2 bg-gray-200 dark:bg-gray-800 rounded animate-pulse flex-shrink-0"
                         />
-                      </div>
-                    )
-                  })}
+                      ))}
+                    </div>
+                  ) : (
+                    columns.map((col) => {
+                      const w = getWidth(col.name)
+                      return (
+                        <div
+                          key={col.name}
+                          style={{ width: w, minWidth: w, maxWidth: w, height: ROW_HEIGHT }}
+                          className="border-r border-gray-100 dark:border-gray-800 last:border-r-0 flex-shrink-0 overflow-hidden"
+                        >
+                          <TableCell
+                            value={row?.[col.name]}
+                            colName={col.name}
+                            colType={col.type}
+                          />
+                        </div>
+                      )
+                    })
+                  )}
                 </div>
               )
             })}
           </div>
         </div>
       </div>
-
-      {/* Loading-more footer */}
-      {(loadingMore || loadingAll) && (
-        <div className="flex justify-center items-center gap-2 py-2 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 text-xs text-gray-400 dark:text-gray-600">
-          <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-          </svg>
-          {loadingAll ? 'Loading all rows…' : 'Loading more…'}
-        </div>
-      )}
     </div>
   )
 }

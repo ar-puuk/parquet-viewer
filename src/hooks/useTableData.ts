@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { queryDB } from './useDuckDB'
 import { useAppStore } from '../store/useAppStore'
 
-const PAGE_SIZE = 500
+export const PAGE_SIZE = 500
 
 export type SortDir = 'asc' | 'desc'
 export interface SortState {
@@ -15,18 +15,6 @@ export interface TableRow {
   [key: string]: unknown
 }
 
-interface UseTableDataReturn {
-  rows: TableRow[]
-  loadingMore: boolean
-  loadingAll: boolean
-  hasMore: boolean
-  error: string | null
-  sort: SortState | null
-  setSort: (column: string) => void
-  fetchNextPage: () => void
-  loadAll: () => void
-}
-
 function buildQuery(limit: number, offset: number, sort: SortState | null): string {
   const orderBy = sort
     ? `ORDER BY "${sort.column}" ${sort.direction.toUpperCase()} NULLS LAST`
@@ -34,135 +22,125 @@ function buildQuery(limit: number, offset: number, sort: SortState | null): stri
   return `SELECT ROW_NUMBER() OVER () AS __row_id, * FROM data ${orderBy} LIMIT ${limit} OFFSET ${offset}`
 }
 
-export function useTableData(): UseTableDataReturn {
-  const activeFile = useAppStore((s) => s.activeFile)
+export function useTableData() {
+  const fileStats = useAppStore((s) => s.fileStats)
+  const totalRows = fileStats?.rowCount ?? 0
 
-  const [rows, setRows] = useState<TableRow[]>([])
-  const [offset, setOffset] = useState(0)
-  const [hasMore, setHasMore] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [loadingAll, setLoadingAll] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<SortState | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [loadedCount, setLoadedCount] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  // Bumped whenever cache data changes — gives DataTable a stable trigger to re-render rows
+  const [cacheVersion, setCacheVersion] = useState(0)
 
-  // Incremented each time we start a new fetch session (file change, sort change).
-  // Allows in-flight fetches to detect they've been superseded and discard results.
-  const sessionRef = useRef(0)
+  // Mutable refs: cache, inflight set, session counter
+  const pageCacheRef = useRef(new Map<number, TableRow[]>())
+  const pendingRef   = useRef(new Set<number>())
+  const inflight     = useRef(0) // count of active fetches
+  const sessionRef   = useRef(0)
+  // Always-current sort so async callbacks don't capture stale state
+  const sortRef      = useRef<SortState | null>(null)
+  sortRef.current = sort
 
-  // Reset + fetch first page whenever file or sort changes
-  useEffect(() => {
-    if (!activeFile) {
-      setRows([])
-      setOffset(0)
-      setHasMore(false)
-      return
-    }
+  // ─── Internal helpers ────────────────────────────────────────────────────
 
-    const session = ++sessionRef.current
-    setRows([])
-    setOffset(0)
-    setHasMore(false)
-    setError(null)
-    setLoadingMore(true)
-    ;(async () => {
-      try {
-        const sql = buildQuery(PAGE_SIZE, 0, sort)
-        const result = (await queryDB(sql)) as TableRow[]
-        if (session !== sessionRef.current) return
-        const totalRows = useAppStore.getState().fileStats?.rowCount ?? 0
-        setRows(result)
-        setOffset(result.length)
-        setHasMore(result.length < totalRows)
-      } catch (e) {
-        if (session !== sessionRef.current) return
-        setError(e instanceof Error ? e.message : String(e))
-      } finally {
-        if (session === sessionRef.current) setLoadingMore(false)
-      }
-    })()
-  // Derived keys intentionally: re-run only when file identity or sort values change.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFile?.registeredAs, sort?.column, sort?.direction])
+  function fetchPageIfNeeded(pageIndex: number) {
+    if (pageCacheRef.current.has(pageIndex)) return
+    if (pendingRef.current.has(pageIndex)) return
+    if (pageIndex * PAGE_SIZE >= totalRows) return
 
-  const fetchNextPage = useCallback(() => {
-    if (loadingMore || loadingAll || !hasMore) return
+    pendingRef.current.add(pageIndex)
+    inflight.current++
+    setIsLoading(true)
     const session = sessionRef.current
-    const currentOffset = offset
-    const currentSort = sort
 
-    setLoadingMore(true)
     ;(async () => {
       try {
-        const sql = buildQuery(PAGE_SIZE, currentOffset, currentSort)
+        const offset = pageIndex * PAGE_SIZE
+        const sql = buildQuery(PAGE_SIZE, offset, sortRef.current)
         const result = (await queryDB(sql)) as TableRow[]
         if (session !== sessionRef.current) return
-        const totalRows = useAppStore.getState().fileStats?.rowCount ?? 0
-        setRows((prev) => [...prev, ...result])
-        const newOffset = currentOffset + result.length
-        setOffset(newOffset)
-        setHasMore(newOffset < totalRows)
+
+        pageCacheRef.current.set(pageIndex, result)
+        setLoadedCount((c) => c + result.length)
+        setCacheVersion((v) => v + 1)
       } catch (e) {
         if (session !== sessionRef.current) return
+        pendingRef.current.delete(pageIndex) // allow retry on next scroll
         setError(e instanceof Error ? e.message : String(e))
       } finally {
-        if (session === sessionRef.current) setLoadingMore(false)
-      }
-    })()
-  }, [loadingMore, loadingAll, hasMore, offset, sort])
-
-  const loadAll = useCallback(() => {
-    const fileStats = useAppStore.getState().fileStats
-    if (!fileStats || loadingAll) return
-
-    const session = ++sessionRef.current
-    const currentSort = sort
-    const totalRows = fileStats.rowCount
-
-    setLoadingAll(true)
-    setError(null)
-    ;(async () => {
-      try {
-        // Fetch all pages in sequence, building up the full dataset
-        const allRows: TableRow[] = []
-        let off = 0
-        while (off < totalRows) {
-          if (session !== sessionRef.current) return
-          const sql = buildQuery(PAGE_SIZE, off, currentSort)
-          const batch = (await queryDB(sql)) as TableRow[]
-          if (session !== sessionRef.current) return
-          allRows.push(...batch)
-          off += batch.length
-          setRows([...allRows]) // update progressively so UI reflects progress
-          if (batch.length < PAGE_SIZE) break
+        if (session === sessionRef.current) {
+          inflight.current--
+          if (inflight.current === 0) setIsLoading(false)
         }
-        setOffset(allRows.length)
-        setHasMore(false)
-      } catch (e) {
-        if (session !== sessionRef.current) return
-        setError(e instanceof Error ? e.message : String(e))
-      } finally {
-        if (session === sessionRef.current) setLoadingAll(false)
       }
     })()
-  }, [loadingAll, sort])
+  }
 
+  // ─── Public API ──────────────────────────────────────────────────────────
+
+  /**
+   * Ensure all pages covering [startIdx, endIdx] are in the cache.
+   * Called by DataTable after computing which rows are visible.
+   */
+  const prefetchRange = useCallback(
+    (startIdx: number, endIdx: number) => {
+      if (totalRows === 0) return
+      const startPage = Math.floor(Math.max(0, startIdx) / PAGE_SIZE)
+      const endPage   = Math.floor(Math.min(totalRows - 1, endIdx) / PAGE_SIZE)
+      for (let p = startPage; p <= endPage; p++) {
+        fetchPageIfNeeded(p)
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [totalRows] // fetchPageIfNeeded reads only refs; stable while file is open
+  )
+
+  /** Look up a single row by absolute index. Returns undefined while page is loading. */
+  const getRow = useCallback(
+    (_cacheVersion: number, index: number): TableRow | undefined => {
+      const page = Math.floor(index / PAGE_SIZE)
+      return pageCacheRef.current.get(page)?.[index % PAGE_SIZE]
+    },
+    [] // reads ref directly; caller passes cacheVersion to bust memoization
+  )
+
+  /** True while the page containing this row index is still in-flight. */
+  const isRowLoading = useCallback((index: number): boolean => {
+    const page = Math.floor(index / PAGE_SIZE)
+    return pendingRef.current.has(page) && !pageCacheRef.current.has(page)
+  }, [])
+
+  /** Toggle/cycle sort for a column; clears the cache synchronously. */
   const handleSetSort = useCallback((column: string) => {
+    // Synchronous cache reset before the state update so the first re-render
+    // after the sort change sees an empty cache (shows skeletons immediately).
+    sessionRef.current++
+    pageCacheRef.current = new Map()
+    pendingRef.current   = new Set()
+    inflight.current     = 0
+    setLoadedCount(0)
+    setIsLoading(false)
+    setError(null)
+    setCacheVersion(0)
+
     setSort((prev) => {
       if (prev?.column !== column) return { column, direction: 'asc' }
       if (prev.direction === 'asc') return { column, direction: 'desc' }
-      return null // third click: clear sort
+      return null // third click clears sort
     })
   }, [])
 
   return {
-    rows,
-    loadingMore,
-    loadingAll,
-    hasMore,
+    totalRows,
+    loadedCount,
+    cacheVersion,
+    getRow,
+    isRowLoading,
+    prefetchRange,
+    isLoading,
     error,
     sort,
     setSort: handleSetSort,
-    fetchNextPage,
-    loadAll,
   }
 }

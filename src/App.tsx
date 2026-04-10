@@ -9,10 +9,13 @@ import { useAppStore } from './store/useAppStore'
 import './hooks/useDuckDB'
 
 function ViewerLayout() {
+  const activeFile = useAppStore((s) => s.activeFile)
   return (
     <div className="flex-1 flex overflow-hidden">
       <SchemaSidebar />
-      <DataTable />
+      {/* Key on registeredAs so DataTable unmounts/remounts fresh on each new file,
+          preventing stale page cache from a previous file showing through. */}
+      <DataTable key={activeFile?.registeredAs} />
     </div>
   )
 }
