@@ -84,12 +84,20 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
 
-    // DuckDB GEOMETRY type or GeoArrow STRUCT type: treat as native (ST_AsGeoJSON directly)
+    // DuckDB native GEOMETRY type
     if (
-      (upperType === 'GEOMETRY' || upperType === 'STRUCT') &&
+      upperType === 'GEOMETRY' &&
       (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
     ) {
       return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
+    }
+
+    // GeoArrow struct aliases (POINT_2D = STRUCT(x,y), POLYGON_2D = STRUCT(x,y)[][], etc.)
+    if (
+      upperType === 'STRUCT' &&
+      (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
+    ) {
+      return { geometryColumn: col.name, encoding: 'struct', crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
 
     // WKT: VARCHAR columns with known WKT names, or geo-named VARCHAR columns
@@ -107,11 +115,11 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
   for (const col of schema) {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
-    if (
-      (upperType === 'GEOMETRY' || upperType === 'STRUCT') &&
-      (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
-    ) {
+    if (upperType === 'GEOMETRY' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
       return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
+    }
+    if (upperType === 'STRUCT' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
+      return { geometryColumn: col.name, encoding: 'struct', crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
     if (upperType === 'BLOB' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
       return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null }
@@ -123,7 +131,10 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
     if (GEO_COLUMN_NAMES.has(lower)) {
-      const encoding = upperType === 'VARCHAR' ? 'wkt' : (upperType === 'GEOMETRY' || upperType === 'STRUCT') ? 'native' : 'wkb'
+      const encoding =
+        upperType === 'VARCHAR' ? 'wkt' :
+        upperType === 'GEOMETRY' ? 'native' :
+        upperType === 'STRUCT' ? 'struct' : 'wkb'
       return { geometryColumn: col.name, encoding, crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
   }

@@ -55,25 +55,39 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
 
     const geo = geoInfo  // narrow to non-null for use inside async closure
 
-    // Build the base geometry expression, then optionally reproject to WGS84.
-    // For 'native' encoding the column may be DuckDB's GEOMETRY type or one of
-    // its spatial struct aliases (POINT_2D, POLYGON_2D, etc. — reported as
-    // STRUCT(x DOUBLE, y DOUBLE), STRUCT(...)[][] etc. in DESCRIBE).
-    // An explicit CAST to GEOMETRY is a no-op for real GEOMETRY columns and
-    // correctly converts the struct aliases so ST_Transform/ST_AsGeoJSON work.
-    const baseGeomExpr =
-      geo.encoding === 'native'
-        ? `CAST("${geo.geometryColumn}" AS GEOMETRY)`
-        : geo.encoding === 'wkt'
-        ? `ST_GeomFromText("${geo.geometryColumn}")`
-        : `ST_GeomFromWKB("${geo.geometryColumn}")`
+    // Build the GeoJSON expression depending on encoding and whether reprojection
+    // is needed. DuckDB spatial has specific overload rules:
+    //
+    // 'native'  = real GEOMETRY column → ST_Transform/ST_AsGeoJSON work directly
+    // 'struct'  = GeoArrow alias (POINT_2D / POLYGON_2D / etc., reported as
+    //             STRUCT(x,y) / STRUCT(x,y)[][] in DESCRIBE):
+    //             • ST_AsGeoJSON("col")  works via type overloads — no cast needed
+    //             • CAST(…AS GEOMETRY) is unimplemented for these types
+    //             • ST_Transform(POLYGON_2D,…) has no overload either
+    //             → reprojection requires a GeoJSON round-trip:
+    //               ST_Transform(ST_GeomFromGeoJSON(ST_AsGeoJSON("col")),…)
+    // 'wkb'/'wkt' = binary/text → go through ST_GeomFromWKB / ST_GeomFromText
+    const col = `"${geo.geometryColumn}"`
+    const epsgFrom = geo.epsg != null && geo.epsg !== 4326 ? geo.epsg : null
 
-    const projectedExpr =
-      geo.epsg != null && geo.epsg !== 4326
-        ? `ST_Transform(${baseGeomExpr}, 'EPSG:${geo.epsg}', 'EPSG:4326')`
-        : baseGeomExpr
-
-    const geoExpr = `ST_AsGeoJSON(${projectedExpr})`
+    let geoExpr: string
+    if (geo.encoding === 'native') {
+      geoExpr = epsgFrom
+        ? `ST_AsGeoJSON(ST_Transform(${col}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
+        : `ST_AsGeoJSON(${col})`
+    } else if (geo.encoding === 'struct') {
+      geoExpr = epsgFrom
+        // Round-trip: struct → GeoJSON string → GEOMETRY → transform → GeoJSON
+        ? `ST_AsGeoJSON(ST_Transform(ST_GeomFromGeoJSON(ST_AsGeoJSON(${col})), 'EPSG:${epsgFrom}', 'EPSG:4326'))`
+        : `ST_AsGeoJSON(${col})`
+    } else {
+      const geomExpr = geo.encoding === 'wkt'
+        ? `ST_GeomFromText(${col})`
+        : `ST_GeomFromWKB(${col})`
+      geoExpr = epsgFrom
+        ? `ST_AsGeoJSON(ST_Transform(${geomExpr}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
+        : `ST_AsGeoJSON(${geomExpr})`
+    }
 
     // Property columns: everything except the geometry column and __row_id
     const propCols = schema.filter(

@@ -23,8 +23,14 @@ export interface ActiveFile {
 
 export interface GeoInfo {
   geometryColumn: string
-  /** wkb = BLOB binary, wkt = VARCHAR text, native = DuckDB GEOMETRY type */
-  encoding: 'wkb' | 'wkt' | 'native'
+  /**
+   * wkb    = BLOB binary (ST_GeomFromWKB)
+   * wkt    = VARCHAR text (ST_GeomFromText)
+   * native = DuckDB GEOMETRY type (ST_AsGeoJSON / ST_Transform directly)
+   * struct = GeoArrow struct alias (POINT_2D, POLYGON_2D, etc.) — ST_AsGeoJSON
+   *          works via overload; reprojection needs a GeoJSON round-trip
+   */
+  encoding: 'wkb' | 'wkt' | 'native' | 'struct'
   /** Raw CRS string from metadata (null = WGS84 assumed) */
   crsString: string | null
   isWGS84: boolean
