@@ -81,7 +81,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
 
-    if (WKT_COLUMN_NAMES.has(lower) && upperType === 'VARCHAR') {
+    if ((WKT_COLUMN_NAMES.has(lower) || GEO_COLUMN_NAMES.has(lower)) && upperType === 'VARCHAR') {
       return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true, bbox: null }
     }
     if (GEO_COLUMN_NAMES.has(lower) && upperType === 'BLOB') {
