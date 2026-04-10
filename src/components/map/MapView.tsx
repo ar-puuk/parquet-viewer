@@ -16,10 +16,11 @@ const INTERACTIVE_LAYERS = [LAYER_CIRCLE, LAYER_LINE, LAYER_FILL]
 
 interface Props {
   features: GeoFeature[]
+  fitKey?: number | string
   onFeatureClick?: (rowId: number) => void
 }
 
-export function MapView({ features, onFeatureClick }: Props) {
+export function MapView({ features, fitKey, onFeatureClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -186,14 +187,14 @@ export function MapView({ features, onFeatureClick }: Props) {
     }
   }, [geojson])
 
-  // ── Fit bounds when features first arrive ────────────────────────────────
-  const hasFitRef = useRef(false)
+  // ── Fit bounds on first load and whenever fitKey changes (page turn) ────
+  const prevFitKeyRef = useRef<number | string | undefined>(undefined)
   useEffect(() => {
-    if (features.length === 0) { hasFitRef.current = false; return }
-    if (hasFitRef.current) return
+    if (features.length === 0) return
+    if (prevFitKeyRef.current === fitKey && fitKey !== undefined) return
+    prevFitKeyRef.current = fitKey
     const map = mapRef.current
     if (!map) return
-    hasFitRef.current = true
     try {
       const bounds = new maplibregl.LngLatBounds()
       for (const f of features) {
@@ -203,7 +204,8 @@ export function MapView({ features, onFeatureClick }: Props) {
         map.fitBounds(bounds, { padding: 40, maxZoom: 14, duration: 800 })
       }
     } catch { /* ignore */ }
-  }, [features])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [features, fitKey])
 
   // ── Hover feature-state ──────────────────────────────────────────────────
   useEffect(() => {
