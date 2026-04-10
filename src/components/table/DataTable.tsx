@@ -9,11 +9,12 @@ const ROW_HEIGHT = 35
 type SortDir = 'asc' | 'desc'
 
 export function DataTable() {
-  const schema          = useAppStore((s) => s.schema)
-  const queryResult     = useAppStore((s) => s.queryResult)
-  const hoveredRowId    = useAppStore((s) => s.hoveredRowId)
-  const selectedRowId   = useAppStore((s) => s.selectedRowId)
-  const setHoveredRowId = useAppStore((s) => s.setHoveredRowId)
+  const schema           = useAppStore((s) => s.schema)
+  const queryResult      = useAppStore((s) => s.queryResult)
+  const hoveredRowId     = useAppStore((s) => s.hoveredRowId)
+  const selectedRowId    = useAppStore((s) => s.selectedRowId)
+  const visibleColumns   = useAppStore((s) => s.visibleColumns)
+  const setHoveredRowId  = useAppStore((s) => s.setHoveredRowId)
   const setSelectedRowId = useAppStore((s) => s.setSelectedRowId)
 
   const scrollRef  = useRef<HTMLDivElement>(null)
@@ -58,16 +59,18 @@ export function DataTable() {
   }, [])
 
   // Derive display columns from query result columns, excluding __row_id.
+  // Also filter by visibleColumns when the query builder has a column selection active.
   // Cross-reference with schema for type info; fall back to value inference.
   const columns = useMemo(() => {
     if (!queryResult) return []
     return queryResult.columns
       .filter((name) => name !== '__row_id')
+      .filter((name) => !visibleColumns || visibleColumns.includes(name))
       .map((name) => ({
         name,
         type: schema?.find((c) => c.name === name)?.type ?? '',
       }))
-  }, [queryResult, schema])
+  }, [queryResult, schema, visibleColumns])
 
   // Initialise column widths whenever the result columns change
   useEffect(() => {

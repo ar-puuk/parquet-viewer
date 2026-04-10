@@ -30,6 +30,11 @@ interface AppStore {
   setHoveredRowId: (id: number | null) => void
   setSelectedRowId: (id: number | null) => void
 
+  // Column visibility — set by the query builder, consumed by DataTable
+  // null means "show all columns"; a string[] means show only those columns
+  visibleColumns: string[] | null
+  setVisibleColumns: (cols: string[] | null) => void
+
   // Split layout ratio (Phase 4)
   splitRatio: number
   setSplitRatio: (ratio: number) => void
@@ -75,7 +80,7 @@ export const useAppStore = create<AppStore>((set) => ({
     if (!state.geoInfo) return {}
     return { geoInfo: { ...state.geoInfo, epsg, isWGS84: epsg == null || epsg === 4326 } }
   }),
-  clearFile: () => set({ activeFile: null, schema: null, fileStats: null, geoInfo: null, queryResult: null }),
+  clearFile: () => set({ activeFile: null, schema: null, fileStats: null, geoInfo: null, queryResult: null, visibleColumns: null }),
 
   queryResult: null,
   setQueryResult: (result) => set({ queryResult: result }),
@@ -84,6 +89,9 @@ export const useAppStore = create<AppStore>((set) => ({
   selectedRowId: null,
   setHoveredRowId: (id) => set({ hoveredRowId: id }),
   setSelectedRowId: (id) => set({ selectedRowId: id }),
+
+  visibleColumns: null,
+  setVisibleColumns: (cols) => set({ visibleColumns: cols }),
 
   splitRatio: parseFloat(localStorage.getItem('splitRatio') ?? '65'),
   setSplitRatio: (ratio) => {

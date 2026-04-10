@@ -31,9 +31,10 @@ function saveHistory(history: string[]) {
 }
 
 export function SqlPanel() {
-  const schema      = useAppStore((s) => s.schema)
-  const queryResult = useAppStore((s) => s.queryResult)
-  const theme       = useAppStore((s) => s.theme)
+  const schema           = useAppStore((s) => s.schema)
+  const queryResult      = useAppStore((s) => s.queryResult)
+  const theme            = useAppStore((s) => s.theme)
+  const setVisibleColumns = useAppStore((s) => s.setVisibleColumns)
   const { runQuery, isRunning, error, clearError } = useSqlQuery()
 
   const isDark = theme === 'dark' ||
@@ -106,6 +107,9 @@ export function SqlPanel() {
   const handleRun = useCallback(() => {
     if (!sql.trim() || isRunning) return
     clearError()
+    // When running from the SQL editor directly, clear any builder column filter
+    // so the table shows all columns the query returns.
+    if (activeTab === 'sql') setVisibleColumns(null)
     const trimmed = sql.trim()
     const hist = historyRef.current.filter((q) => q !== trimmed)
     hist.unshift(trimmed)
@@ -114,7 +118,7 @@ export function SqlPanel() {
     saveHistory(hist)
     historyIndexRef.current = -1
     runQuery(sql)
-  }, [sql, isRunning, runQuery, clearError])
+  }, [sql, isRunning, runQuery, clearError, activeTab, setVisibleColumns])
 
   const handleHistoryUp = useCallback(() => {
     const hist = historyRef.current

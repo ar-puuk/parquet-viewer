@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import type { ColumnInfo } from '../../types'
+import { useAppStore } from '../../store/useAppStore'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,6 @@ function isNumericCol(schema: ColumnInfo[], colName: string) {
 }
 
 function buildSql(state: BuilderState, schema: ColumnInfo[]): string {
-  const vis      = visibleCols(schema)
   const excluded = schema
     .filter((c) => EXCLUDED_TYPES.has(c.type.split('(')[0].toUpperCase().trim()))
     .map((c) => c.name)
@@ -64,27 +64,12 @@ function buildSql(state: BuilderState, schema: ColumnInfo[]): string {
     ]
     selectClause = parts.length ? parts.join(',\n       ') : '*'
   } else {
-    const sel     = state.selectedCols
-    const allCols = vis.map((c) => c.name)
-    const isAll   = sel.length === 0 || (sel.length === allCols.length && allCols.every((c) => sel.includes(c)))
-    if (isAll) {
-      selectClause = excluded.length
-        ? `* EXCLUDE (${excluded.map((c) => `"${c}"`).join(', ')})`
-        : '*'
-    } else {
-      // Columns the user explicitly deselected from the visible set
-      const userExcluded = allCols.filter((c) => !sel.includes(c))
-      // Prefer EXCLUDE when fewer columns are removed than kept — same approach
-      // as the BLOB/GEOMETRY exclusion. This avoids enumerating every column
-      // by name, which is brittle when DuckDB internally deduplicates column
-      // names differently from what DESCRIBE reports (e.g. duplicate columns).
-      if (userExcluded.length <= sel.length) {
-        const allExcluded = [...excluded, ...userExcluded]
-        selectClause = `* EXCLUDE (${allExcluded.map((c) => `"${c}"`).join(', ')})`
-      } else {
-        selectClause = sel.map((c) => `"${c}"`).join(',\n       ')
-      }
-    }
+    // Column visibility is handled client-side in DataTable (via visibleColumns store
+    // field) to avoid DuckDB column-name mismatches on files with duplicate column
+    // names. The SQL always fetches all non-blob/geometry columns.
+    selectClause = excluded.length
+      ? `* EXCLUDE (${excluded.map((c) => `"${c}"`).join(', ')})`
+      : '*'
   }
 
   const lines = [`SELECT ${selectClause}`, `FROM data`]
@@ -266,6 +251,7 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
   const colNames   = vis.map((c) => c.name)
   const onSqlRef   = useRef(onSqlChange)
   onSqlRef.current = onSqlChange
+  const setVisibleColumns = useAppStore((s) => s.setVisibleColumns)
 
   const [state, setState]   = useState<BuilderState>(() => parseSqlToState(initialSql, schema))
   const [colSearch, setColSearch] = useState('')
@@ -280,7 +266,14 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
 
   useEffect(() => {
     onSqlRef.current(buildSql(state, schema))
-  }, [state, schema])
+    // Sync column visibility to the store so DataTable can filter without
+    // referencing column names in SQL (avoids DuckDB deduplication mismatches).
+    if (state.mode === 'select') {
+      setVisibleColumns(state.selectedCols.length === 0 ? null : state.selectedCols)
+    } else {
+      setVisibleColumns(null) // aggregate mode: show whatever the query returns
+    }
+  }, [state, schema, setVisibleColumns])
 
   const update = (patch: Partial<BuilderState>) => setState((s) => ({ ...s, ...patch }))
 
