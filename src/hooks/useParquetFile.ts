@@ -8,6 +8,27 @@ import type { ColumnInfo, FileStats } from '../types'
 
 const REGISTERED_NAME = 'data.parquet'
 
+/**
+ * After recreating the view with the spatial extension loaded, check the actual
+ * DuckDB type for the geometry column. If DuckDB has resolved it to GEOMETRY,
+ * switch to 'native' encoding so we use ST_AsGeoJSON("col") directly.
+ */
+async function resolveGeoEncoding(geoInfo: import('../types').GeoInfo): Promise<import('../types').GeoInfo> {
+  try {
+    const col = geoInfo.geometryColumn.replace(/'/g, "''")
+    const rows = await queryDB(
+      `SELECT column_type FROM (DESCRIBE data) WHERE column_name = '${col}' LIMIT 1`
+    )
+    const updatedType = String(rows[0]?.['column_type'] ?? '').split('(')[0].toUpperCase().trim()
+    if (updatedType === 'GEOMETRY') {
+      return { ...geoInfo, encoding: 'native' }
+    }
+  } catch {
+    // If DESCRIBE fails for any reason, keep original encoding
+  }
+  return geoInfo
+}
+
 function classifyError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e)
   const lower = msg.toLowerCase()
@@ -94,8 +115,14 @@ export function useParquetFile() {
         extractFileStats(file.size),
       ])
 
-      const geoInfo = await detectGeo(schema)
-      if (geoInfo) await ensureSpatialExtension()
+      let geoInfo = await detectGeo(schema)
+      if (geoInfo) {
+        await ensureSpatialExtension()
+        // Recreate the view with the spatial extension active so DuckDB resolves
+        // GeoArrow struct columns and WKB blobs to its native GEOMETRY type.
+        await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
+        geoInfo = await resolveGeoEncoding(geoInfo)
+      }
 
       setSchema(schema)
       setFileStats(stats)
@@ -132,8 +159,12 @@ export function useParquetFile() {
         extractFileStats(null),
       ])
 
-      const geoInfo = await detectGeo(schema)
-      if (geoInfo) await ensureSpatialExtension()
+      let geoInfo = await detectGeo(schema)
+      if (geoInfo) {
+        await ensureSpatialExtension()
+        await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
+        geoInfo = await resolveGeoEncoding(geoInfo)
+      }
 
       setSchema(schema)
       setFileStats(stats)

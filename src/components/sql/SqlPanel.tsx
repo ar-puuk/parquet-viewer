@@ -3,13 +3,15 @@ import { SqlEditor } from './SqlEditor'
 import { useAppStore } from '../../store/useAppStore'
 import { useSqlQuery } from '../../hooks/useSqlQuery'
 
+const EXCLUDED_TYPES = new Set(['BLOB', 'GEOMETRY'])
+
 function buildDefaultSql(schema: { name: string; type: string }[] | null): string {
   if (!schema) return 'SELECT *\nFROM data\nLIMIT 1000'
-  const blobCols = schema
-    .filter((c) => c.type.split('(')[0].toUpperCase().trim() === 'BLOB')
+  const excludedCols = schema
+    .filter((c) => EXCLUDED_TYPES.has(c.type.split('(')[0].toUpperCase().trim()))
     .map((c) => `"${c.name}"`)
-  if (blobCols.length === 0) return 'SELECT *\nFROM data\nLIMIT 1000'
-  return `SELECT * EXCLUDE (${blobCols.join(', ')})\nFROM data\nLIMIT 1000`
+  if (excludedCols.length === 0) return 'SELECT *\nFROM data\nLIMIT 1000'
+  return `SELECT * EXCLUDE (${excludedCols.join(', ')})\nFROM data\nLIMIT 1000`
 }
 
 export function SqlPanel() {

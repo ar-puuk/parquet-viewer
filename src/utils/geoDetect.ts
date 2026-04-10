@@ -84,8 +84,11 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
 
-    // DuckDB GEOMETRY type: spatial extension was already loaded and parsed the column
-    if (upperType === 'GEOMETRY' && (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
+    // DuckDB GEOMETRY type or GeoArrow STRUCT type: treat as native (ST_AsGeoJSON directly)
+    if (
+      (upperType === 'GEOMETRY' || upperType === 'STRUCT') &&
+      (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
+    ) {
       return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
 
@@ -100,11 +103,14 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     }
   }
 
-  // Looser pass: any BLOB or GEOMETRY column whose name contains geo/geom/wkb
+  // Looser pass: any BLOB, GEOMETRY, or STRUCT column whose name contains geo/geom/wkb
   for (const col of schema) {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
-    if (upperType === 'GEOMETRY' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
+    if (
+      (upperType === 'GEOMETRY' || upperType === 'STRUCT') &&
+      (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
+    ) {
       return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
     if (upperType === 'BLOB' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
@@ -117,7 +123,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
     if (GEO_COLUMN_NAMES.has(lower)) {
-      const encoding = upperType === 'VARCHAR' ? 'wkt' : upperType === 'GEOMETRY' ? 'native' : 'wkb'
+      const encoding = upperType === 'VARCHAR' ? 'wkt' : (upperType === 'GEOMETRY' || upperType === 'STRUCT') ? 'native' : 'wkb'
       return { geometryColumn: col.name, encoding, crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
   }
