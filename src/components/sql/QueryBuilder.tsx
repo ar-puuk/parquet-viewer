@@ -158,19 +158,31 @@ function parseSqlToState(sql: string, schema: ColumnInfo[]): BuilderState {
 
 // ── Visual helpers ────────────────────────────────────────────────────────────
 
-function typeDotColor(type: string): string {
+function typeLabel(type: string): string {
+  const t = type.split('(')[0].toUpperCase().trim()
+  if (['INTEGER','INT','INT2','INT4','INT8','BIGINT','SMALLINT','TINYINT','HUGEINT','UINTEGER','UBIGINT'].includes(t)) return 'INT'
+  if (['FLOAT','DOUBLE','REAL'].includes(t))   return 'FLT'
+  if (['DECIMAL','NUMERIC'].includes(t))        return 'DEC'
+  if (['VARCHAR','TEXT','STRING','CHAR'].includes(t)) return 'STR'
+  if (t === 'DATE')                             return 'DATE'
+  if (t.startsWith('TIMESTAMP'))               return 'TIME'
+  if (['BOOLEAN','BOOL'].includes(t))           return 'BOOL'
+  return t.slice(0, 4)
+}
+
+function typeBadgeCls(type: string): string {
   const t = type.split('(')[0].toUpperCase().trim()
   if (['INTEGER','INT','INT2','INT4','INT8','BIGINT','SMALLINT','TINYINT','HUGEINT','UINTEGER','UBIGINT'].includes(t))
-    return 'bg-blue-400 dark:bg-blue-500'
+    return 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400'
   if (['FLOAT','DOUBLE','DECIMAL','NUMERIC','REAL'].includes(t))
-    return 'bg-purple-400 dark:bg-purple-500'
+    return 'bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400'
   if (['VARCHAR','TEXT','STRING','CHAR'].includes(t))
-    return 'bg-green-400 dark:bg-green-500'
+    return 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400'
   if (['DATE','TIMESTAMP','TIME','INTERVAL'].includes(t))
-    return 'bg-orange-400 dark:bg-orange-500'
+    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400'
   if (['BOOLEAN','BOOL'].includes(t))
-    return 'bg-yellow-400 dark:bg-yellow-500'
-  return 'bg-gray-400 dark:bg-gray-500'
+    return 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400'
+  return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
 }
 
 const FILTER_OPS: FilterOp[] = ['=', '!=', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL']
@@ -244,7 +256,8 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
   const onSqlRef   = useRef(onSqlChange)
   onSqlRef.current = onSqlChange
 
-  const [state, setState] = useState<BuilderState>(() => parseSqlToState(initialSql, schema))
+  const [state, setState]   = useState<BuilderState>(() => parseSqlToState(initialSql, schema))
+  const [colSearch, setColSearch] = useState('')
 
   const prevSqlRef = useRef(initialSql)
   useEffect(() => {
@@ -313,58 +326,89 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
         }
       >
         {state.mode === 'select' ? (
-          <div className="px-3 space-y-2">
-            {/* Column pills */}
-            <div className="flex flex-wrap gap-1.5">
-              {vis.map((col) => {
-                const on = isSelected(col.name)
-                return (
-                  <button
-                    key={col.name}
-                    onClick={() => toggleCol(col.name)}
-                    title={col.type}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                      on
-                        ? 'bg-indigo-50 dark:bg-indigo-950 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 shadow-sm'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-600 dark:hover:text-gray-400'
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${on ? typeDotColor(col.type) : 'bg-gray-300 dark:bg-gray-600'}`} />
-                    <span className="truncate max-w-[110px]">{col.name}</span>
-                  </button>
-                )
-              })}
+          <div>
+            {/* Search + counts */}
+            <div className="px-3 pb-1.5 flex items-center gap-2">
+              <div className="relative flex-1">
+                <svg viewBox="0 0 14 14" className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-gray-300 dark:text-gray-600 pointer-events-none" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                  <circle cx="5.5" cy="5.5" r="4"/><line x1="9" y1="9" x2="13" y2="13"/>
+                </svg>
+                <input
+                  value={colSearch}
+                  onChange={(e) => setColSearch(e.target.value)}
+                  placeholder="Search columns…"
+                  className="w-full pl-6 pr-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md text-[11px] text-gray-700 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+              </div>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 tabular-nums">{selCount}/{vis.length}</span>
             </div>
-            {/* Controls row */}
-            <div className="flex items-center gap-2 pt-0.5">
-              <button onClick={() => update({ selectedCols: [] })} className={addBtnCls}>Select all</button>
-              <span className="text-gray-200 dark:text-gray-700">·</span>
+            {/* Column rows */}
+            <div className="max-h-52 overflow-y-auto">
+              {vis
+                .filter((c) => !colSearch || c.name.toLowerCase().includes(colSearch.toLowerCase()))
+                .map((col) => {
+                  const on = isSelected(col.name)
+                  return (
+                    <button
+                      key={col.name}
+                      onClick={() => toggleCol(col.name)}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors border-l-2 ${
+                        on
+                          ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-500'
+                          : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/40'
+                      }`}
+                    >
+                      <span className={`text-[9px] font-mono font-bold px-1 py-px rounded flex-shrink-0 ${typeBadgeCls(col.type)}`}>
+                        {typeLabel(col.type)}
+                      </span>
+                      <span className={`flex-1 truncate text-[12px] ${on ? 'text-indigo-700 dark:text-indigo-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
+                        {col.name}
+                      </span>
+                      {on && (
+                        <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-indigo-400 dark:text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <polyline points="1,5 3.5,8 9,1.5"/>
+                        </svg>
+                      )}
+                    </button>
+                  )
+                })}
+            </div>
+            {/* All / Clear footer */}
+            <div className="px-3 pt-1.5 flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 mt-1">
+              <button onClick={() => { update({ selectedCols: [] }); setColSearch('') }} className={addBtnCls}>Select all</button>
               <button onClick={() => update({ selectedCols: [colNames[0] ?? ''] })} className="text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Clear</button>
-              <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">{selCount} / {vis.length}</span>
             </div>
           </div>
         ) : (
           /* Aggregate mode */
           <div className="px-3 space-y-3">
-            {/* Group By pills */}
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Group by</p>
-              <div className="flex flex-wrap gap-1.5">
+            {/* Group By — row list */}
+            <div>
+              <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Group by</p>
+              <div className="max-h-40 overflow-y-auto border border-gray-100 dark:border-gray-800 rounded-lg overflow-hidden">
                 {vis.map((col) => {
                   const on = state.groupByCols.includes(col.name)
                   return (
                     <button
                       key={col.name}
                       onClick={() => toggleGrpCol(col.name)}
-                      title={col.type}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors border-l-2 ${
                         on
-                          ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 shadow-sm'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-600 dark:hover:text-gray-400'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-500'
+                          : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/40'
                       }`}
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${on ? typeDotColor(col.type) : 'bg-gray-300 dark:bg-gray-600'}`} />
-                      <span className="truncate max-w-[110px]">{col.name}</span>
+                      <span className={`text-[9px] font-mono font-bold px-1 py-px rounded flex-shrink-0 ${typeBadgeCls(col.type)}`}>
+                        {typeLabel(col.type)}
+                      </span>
+                      <span className={`flex-1 truncate text-[12px] ${on ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
+                        {col.name}
+                      </span>
+                      {on && (
+                        <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <polyline points="1,5 3.5,8 9,1.5"/>
+                        </svg>
+                      )}
                     </button>
                   )
                 })}

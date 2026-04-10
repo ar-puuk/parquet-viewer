@@ -42,7 +42,7 @@ export function SqlPanel() {
   const defaultSql = useMemo(() => buildDefaultSql(schema), [schema])
 
   const [sql, setSql]             = useState(defaultSql)
-  const [activeTab, setActiveTab] = useState<'sql' | 'builder'>('sql')
+  const [activeTab, setActiveTab] = useState<'sql' | 'builder'>('builder')
   const [expanded, setExpanded]   = useState(true)
   const [panelWidth, setPanelWidth] = useState<number>(() => {
     const stored = parseInt(localStorage.getItem('sqlPanelWidth') ?? '', 10)
@@ -82,7 +82,7 @@ export function SqlPanel() {
     if (!schema) return
     const fresh = buildDefaultSql(schema)
     setSql(fresh)
-    setActiveTab('sql')
+    setActiveTab('builder')
     setExpanded(true)
     autoRanRef.current    = false
     historyIndexRef.current = -1
