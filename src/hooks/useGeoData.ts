@@ -56,9 +56,14 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
     const geo = geoInfo  // narrow to non-null for use inside async closure
 
     // Build the base geometry expression, then optionally reproject to WGS84.
+    // For 'native' encoding the column may be DuckDB's GEOMETRY type or one of
+    // its spatial struct aliases (POINT_2D, POLYGON_2D, etc. — reported as
+    // STRUCT(x DOUBLE, y DOUBLE), STRUCT(...)[][] etc. in DESCRIBE).
+    // An explicit CAST to GEOMETRY is a no-op for real GEOMETRY columns and
+    // correctly converts the struct aliases so ST_Transform/ST_AsGeoJSON work.
     const baseGeomExpr =
       geo.encoding === 'native'
-        ? `"${geo.geometryColumn}"`
+        ? `CAST("${geo.geometryColumn}" AS GEOMETRY)`
         : geo.encoding === 'wkt'
         ? `ST_GeomFromText("${geo.geometryColumn}")`
         : `ST_GeomFromWKB("${geo.geometryColumn}")`
