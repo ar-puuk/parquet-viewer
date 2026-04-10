@@ -17,6 +17,7 @@ interface AppStore {
   setSchema: (schema: ColumnInfo[] | null) => void
   setFileStats: (stats: FileStats | null) => void
   setGeoInfo: (info: GeoInfo | null) => void
+  setGeoEpsg: (epsg: number | null) => void
   clearFile: () => void
 
   // Query result — populated by SQL panel, consumed by DataTable + MapView
@@ -70,6 +71,10 @@ export const useAppStore = create<AppStore>((set) => ({
   setSchema: (schema) => set({ schema }),
   setFileStats: (stats) => set({ fileStats: stats }),
   setGeoInfo: (info) => set({ geoInfo: info }),
+  setGeoEpsg: (epsg) => set((state) => {
+    if (!state.geoInfo) return {}
+    return { geoInfo: { ...state.geoInfo, epsg, isWGS84: epsg == null || epsg === 4326 } }
+  }),
   clearFile: () => set({ activeFile: null, schema: null, fileStats: null, geoInfo: null, queryResult: null }),
 
   queryResult: null,

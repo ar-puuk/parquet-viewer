@@ -23,12 +23,15 @@ export interface ActiveFile {
 
 export interface GeoInfo {
   geometryColumn: string
-  encoding: 'wkb' | 'wkt'
+  /** wkb = BLOB binary, wkt = VARCHAR text, native = DuckDB GEOMETRY type */
+  encoding: 'wkb' | 'wkt' | 'native'
   /** Raw CRS string from metadata (null = WGS84 assumed) */
   crsString: string | null
   isWGS84: boolean
   /** Bounding box from GeoParquet metadata [minx, miny, maxx, maxy], if present */
   bbox: [number, number, number, number] | null
+  /** Source EPSG code. null = unknown (assumed 4326). Used for ST_Transform. */
+  epsg: number | null
 }
 
 export interface QueryResult {

@@ -52,15 +52,18 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
 
         let isWGS84 = true
         let crsString: string | null = null
+        let epsg: number | null = null
         if (colMeta?.crs) {
           crsString = JSON.stringify(colMeta.crs)
           // PROJJSON: check id.code === 4326 (WGS 84)
           const crsObj = colMeta.crs as Record<string, unknown>
-          const code =
+          const rawCode =
             (crsObj?.id as Record<string, unknown>)?.code ??
             ((crsObj?.components as Array<Record<string, unknown>>)?.[0]?.id as Record<string, unknown>)?.code
-          isWGS84 = code == null || code === 4326 || code === '4326'
+          epsg = rawCode != null ? Number(rawCode) : null
+          isWGS84 = epsg == null || epsg === 4326
         }
+
         // Extract bounding box [minx, miny, maxx, maxy] from metadata if present
         let bbox: [number, number, number, number] | null = null
         const rawBbox = (colMeta as Record<string, unknown> | undefined)?.['bbox']
@@ -69,7 +72,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
           if (b.every(isFinite)) bbox = b as [number, number, number, number]
         }
 
-        return { geometryColumn: primaryCol, encoding, crsString, isWGS84, bbox }
+        return { geometryColumn: primaryCol, encoding, crsString, isWGS84, bbox, epsg }
       }
     }
   } catch {
@@ -81,20 +84,41 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
 
-    if ((WKT_COLUMN_NAMES.has(lower) || GEO_COLUMN_NAMES.has(lower)) && upperType === 'VARCHAR') {
-      return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true, bbox: null }
+    // DuckDB GEOMETRY type: spatial extension was already loaded and parsed the column
+    if (upperType === 'GEOMETRY' && (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
+      return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
+
+    // WKT: VARCHAR columns with known WKT names, or geo-named VARCHAR columns
+    if ((WKT_COLUMN_NAMES.has(lower) || GEO_COLUMN_NAMES.has(lower)) && upperType === 'VARCHAR') {
+      return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true, bbox: null, epsg: null }
+    }
+
+    // WKB: BLOB columns with known geo names
     if (GEO_COLUMN_NAMES.has(lower) && upperType === 'BLOB') {
-      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null }
+      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
   }
 
-  // Looser pass: any BLOB whose name contains geo/geom/wkb
+  // Looser pass: any BLOB or GEOMETRY column whose name contains geo/geom/wkb
   for (const col of schema) {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
+    if (upperType === 'GEOMETRY' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
+      return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
+    }
     if (upperType === 'BLOB' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
-      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null }
+      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null }
+    }
+  }
+
+  // Final fallback: exact name match regardless of type (covers unusual DuckDB type names)
+  for (const col of schema) {
+    const lower = col.name.toLowerCase()
+    const upperType = col.type.split('(')[0].toUpperCase().trim()
+    if (GEO_COLUMN_NAMES.has(lower)) {
+      const encoding = upperType === 'VARCHAR' ? 'wkt' : upperType === 'GEOMETRY' ? 'native' : 'wkb'
+      return { geometryColumn: col.name, encoding, crsString: null, isWGS84: true, bbox: null, epsg: null }
     }
   }
 

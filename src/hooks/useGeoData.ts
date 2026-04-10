@@ -54,10 +54,21 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
     setError(null)
 
     const geo = geoInfo  // narrow to non-null for use inside async closure
-    const geoExpr =
-      geo.encoding === 'wkb'
-        ? `ST_AsGeoJSON(ST_GeomFromWKB("${geo.geometryColumn}"))`
-        : `ST_AsGeoJSON(ST_GeomFromText("${geo.geometryColumn}"))`
+
+    // Build the base geometry expression, then optionally reproject to WGS84.
+    const baseGeomExpr =
+      geo.encoding === 'native'
+        ? `"${geo.geometryColumn}"`
+        : geo.encoding === 'wkt'
+        ? `ST_GeomFromText("${geo.geometryColumn}")`
+        : `ST_GeomFromWKB("${geo.geometryColumn}")`
+
+    const projectedExpr =
+      geo.epsg != null && geo.epsg !== 4326
+        ? `ST_Transform(${baseGeomExpr}, 'EPSG:${geo.epsg}', 'EPSG:4326')`
+        : baseGeomExpr
+
+    const geoExpr = `ST_AsGeoJSON(${projectedExpr})`
 
     // Property columns: everything except the geometry column and __row_id
     const propCols = schema.filter(
