@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import type { ColumnInfo } from '../../types'
-import { useAppStore } from '../../store/useAppStore'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +27,7 @@ interface Props {
   schema: ColumnInfo[]
   initialSql: string
   onSqlChange: (sql: string) => void
+  onColumnSelectionChange: (cols: string[] | null) => void
 }
 
 // ── Data helpers (unchanged) ──────────────────────────────────────────────────
@@ -246,12 +246,13 @@ const LimIcon  = () => <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="no
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
+export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectionChange }: Props) {
   const vis        = visibleCols(schema)
   const colNames   = vis.map((c) => c.name)
   const onSqlRef   = useRef(onSqlChange)
   onSqlRef.current = onSqlChange
-  const setVisibleColumns = useAppStore((s) => s.setVisibleColumns)
+  const onColSelRef = useRef(onColumnSelectionChange)
+  onColSelRef.current = onColumnSelectionChange
 
   const [state, setState]   = useState<BuilderState>(() => parseSqlToState(initialSql, schema))
   const [colSearch, setColSearch] = useState('')
@@ -266,14 +267,12 @@ export function QueryBuilder({ schema, initialSql, onSqlChange }: Props) {
 
   useEffect(() => {
     onSqlRef.current(buildSql(state, schema))
-    // Sync column visibility to the store so DataTable can filter without
-    // referencing column names in SQL (avoids DuckDB deduplication mismatches).
-    if (state.mode === 'select') {
-      setVisibleColumns(state.selectedCols.length === 0 ? null : state.selectedCols)
-    } else {
-      setVisibleColumns(null) // aggregate mode: show whatever the query returns
-    }
-  }, [state, schema, setVisibleColumns])
+    // Notify parent of current column selection so it can apply it on Run.
+    const cols = state.mode === 'select' && state.selectedCols.length > 0
+      ? state.selectedCols
+      : null
+    onColSelRef.current(cols)
+  }, [state, schema])
 
   const update = (patch: Partial<BuilderState>) => setState((s) => ({ ...s, ...patch }))
 

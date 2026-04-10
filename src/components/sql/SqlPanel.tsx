@@ -74,9 +74,10 @@ export function SqlPanel() {
   const [builderKey, setBuilderKey]         = useState(0)
   const [builderInitialSql, setBuilderInitialSql] = useState(sql)
 
-  const autoRanRef      = useRef(false)
-  const historyRef      = useRef<string[]>(loadHistory())
-  const historyIndexRef = useRef<number>(-1)
+  const autoRanRef             = useRef(false)
+  const historyRef             = useRef<string[]>(loadHistory())
+  const historyIndexRef        = useRef<number>(-1)
+  const pendingVisibleColsRef  = useRef<string[] | null>(null)
 
   // When a new file is loaded reset state and auto-run default query
   useEffect(() => {
@@ -107,9 +108,8 @@ export function SqlPanel() {
   const handleRun = useCallback(() => {
     if (!sql.trim() || isRunning) return
     clearError()
-    // When running from the SQL editor directly, clear any builder column filter
-    // so the table shows all columns the query returns.
-    if (activeTab === 'sql') setVisibleColumns(null)
+    // Apply column visibility: builder selection on builder tab, reset on SQL tab.
+    setVisibleColumns(activeTab === 'builder' ? pendingVisibleColsRef.current : null)
     const trimmed = sql.trim()
     const hist = historyRef.current.filter((q) => q !== trimmed)
     hist.unshift(trimmed)
@@ -217,6 +217,7 @@ export function SqlPanel() {
             schema={schema}
             initialSql={builderInitialSql}
             onSqlChange={setSql}
+            onColumnSelectionChange={(cols) => { pendingVisibleColsRef.current = cols }}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-[11px] text-gray-400 dark:text-gray-600 p-4 text-center">
