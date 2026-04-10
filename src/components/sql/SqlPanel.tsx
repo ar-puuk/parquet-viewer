@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { SqlEditor } from './SqlEditor'
+import { QueryBuilder } from './QueryBuilder'
 import { useAppStore } from '../../store/useAppStore'
 import { useSqlQuery } from '../../hooks/useSqlQuery'
 
@@ -39,7 +40,8 @@ export function SqlPanel() {
 
   const defaultSql = useMemo(() => buildDefaultSql(schema), [schema])
 
-  const [sql, setSql]   = useState(defaultSql)
+  const [sql, setSql]           = useState(defaultSql)
+  const [activeTab, setActiveTab] = useState<'sql' | 'builder'>('sql')
   const [isOpen, setIsOpen] = useState<boolean>(() => {
     const stored = localStorage.getItem('sqlPanelOpen')
     return stored === null ? true : stored === 'true'
@@ -161,9 +163,23 @@ export function SqlPanel() {
     <div className="flex flex-col flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 select-none">
-          SQL
-        </span>
+        {/* Tab toggle */}
+        <div className="flex items-center gap-0.5 bg-gray-200 dark:bg-gray-700 rounded p-0.5">
+          {(['sql', 'builder'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors capitalize ${
+                activeTab === tab
+                  ? 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-3">
           {queryResult && !isRunning && (
             <span className="text-[11px] text-gray-400 dark:text-gray-500">
@@ -181,17 +197,30 @@ export function SqlPanel() {
         </div>
       </div>
 
-      {/* CodeMirror editor — height is user-resizable */}
+      {/* Content: SQL editor or visual builder */}
       <div style={{ height: editorHeight }} className="overflow-hidden">
-        <SqlEditor
-          value={sql}
-          onChange={setSql}
-          onRun={handleRun}
-          isDark={isDark}
-          schema={schema}
-          onHistoryUp={handleHistoryUp}
-          onHistoryDown={handleHistoryDown}
-        />
+        {activeTab === 'sql' ? (
+          <SqlEditor
+            value={sql}
+            onChange={setSql}
+            onRun={handleRun}
+            isDark={isDark}
+            schema={schema}
+            onHistoryUp={handleHistoryUp}
+            onHistoryDown={handleHistoryDown}
+          />
+        ) : schema ? (
+          <QueryBuilder
+            key={sql + schema.map((c) => c.name).join(',')}
+            schema={schema}
+            initialSql={sql}
+            onSqlChange={setSql}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-[11px] text-gray-400">
+            Load a file to use the query builder
+          </div>
+        )}
       </div>
 
       {/* Resize drag handle */}
@@ -221,6 +250,17 @@ export function SqlPanel() {
         <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">
           Ctrl+Enter · Alt+↑↓ history
         </span>
+        <button
+          onClick={() => navigator.clipboard.writeText(sql).catch(() => {})}
+          title="Copy SQL"
+          className="ml-auto text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
+        >
+          <svg viewBox="0 0 14 14" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5}>
+            <rect x="4" y="4" width="8" height="9" rx="1" />
+            <path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+          </svg>
+          Copy
+        </button>
       </div>
 
       {/* Inline error */}
