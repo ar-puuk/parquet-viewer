@@ -219,7 +219,7 @@ export function SqlPanel() {
           Run
         </button>
         <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">
-          Ctrl+Enter · ↑↓ history
+          Ctrl+Enter · Alt+↑↓ history
         </span>
       </div>
 

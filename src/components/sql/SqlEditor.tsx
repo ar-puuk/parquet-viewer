@@ -60,20 +60,12 @@ export function SqlEditor({ value, onChange, onRun, isDark, schema, onHistoryUp,
               run: () => { onRunRef.current(); return true },
             },
             {
-              key: 'ArrowUp',
-              run: (v) => {
-                const line = v.state.doc.lineAt(v.state.selection.main.from)
-                if (line.number === 1) { onHistoryUpRef.current?.(); return true }
-                return false
-              },
+              key: 'Alt-ArrowUp',
+              run: () => { onHistoryUpRef.current?.(); return true },
             },
             {
-              key: 'ArrowDown',
-              run: (v) => {
-                const line = v.state.doc.lineAt(v.state.selection.main.from)
-                if (line.number === v.state.doc.lines) { onHistoryDownRef.current?.(); return true }
-                return false
-              },
+              key: 'Alt-ArrowDown',
+              run: () => { onHistoryDownRef.current?.(); return true },
             },
           ]),
           EditorView.updateListener.of((update) => {
