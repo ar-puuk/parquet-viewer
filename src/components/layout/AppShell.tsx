@@ -1,5 +1,6 @@
 import { useAppStore } from '../../store/useAppStore'
 import { Link } from 'react-router-dom'
+import { useCallback } from 'react'
 
 const GitHubIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -36,7 +37,8 @@ const SystemIcon = () => (
 )
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { theme, setTheme } = useAppStore()
+  const { theme, setTheme, clearFile } = useAppStore()
+  const handleLogoClick = useCallback(() => clearFile(), [clearFile])
 
   const cycleTheme = () => {
     if (theme === 'system') setTheme('light')
@@ -51,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="h-screen overflow-hidden bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
       <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 z-10 flex-shrink-0">
         <div className="max-w-screen-2xl mx-auto px-4 h-12 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <svg viewBox="0 0 32 32" className="w-7 h-7" fill="none">
               <rect width="32" height="32" rx="6" fill="#6366f1" />
               <path d="M8 10h6a4 4 0 0 1 0 8H8V10z" fill="white" />

@@ -72,7 +72,18 @@ function buildSql(state: BuilderState, schema: ColumnInfo[]): string {
         ? `* EXCLUDE (${excluded.map((c) => `"${c}"`).join(', ')})`
         : '*'
     } else {
-      selectClause = sel.map((c) => `"${c}"`).join(',\n       ')
+      // Columns the user explicitly deselected from the visible set
+      const userExcluded = allCols.filter((c) => !sel.includes(c))
+      // Prefer EXCLUDE when fewer columns are removed than kept — same approach
+      // as the BLOB/GEOMETRY exclusion. This avoids enumerating every column
+      // by name, which is brittle when DuckDB internally deduplicates column
+      // names differently from what DESCRIBE reports (e.g. duplicate columns).
+      if (userExcluded.length <= sel.length) {
+        const allExcluded = [...excluded, ...userExcluded]
+        selectClause = `* EXCLUDE (${allExcluded.map((c) => `"${c}"`).join(', ')})`
+      } else {
+        selectClause = sel.map((c) => `"${c}"`).join(',\n       ')
+      }
     }
   }
 
