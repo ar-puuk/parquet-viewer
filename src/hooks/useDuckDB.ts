@@ -45,8 +45,11 @@ const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
 ;(async () => {
   try {
     const bundle = await duckdb.selectBundle(MANUAL_BUNDLES)
+    // Resolve to an absolute URL — importScripts() inside a blob: worker cannot
+    // resolve relative URLs since its base is blob:, not the page origin.
+    const absoluteWorkerUrl = new URL(bundle.mainWorker!, window.location.href).href
     const workerUrl = URL.createObjectURL(
-      new Blob([`importScripts("${bundle.mainWorker!}")`], { type: 'text/javascript' })
+      new Blob([`importScripts("${absoluteWorkerUrl}")`], { type: 'text/javascript' })
     )
     const worker = new Worker(workerUrl)
     const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING)
