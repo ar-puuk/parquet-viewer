@@ -53,24 +53,36 @@ export function useGeoData(
         ? `ST_AsGeoJSON(ST_GeomFromWKB("${geoInfo.geometryColumn}"))`
         : `ST_AsGeoJSON(ST_GeomFromText("${geoInfo.geometryColumn}"))`
 
+    // Build the inner SELECT for the subquery — must include the geometry column
+    // and all property columns so the outer query can reference them by name.
+    const innerCols = [
+      `"${geoInfo.geometryColumn}"`,
+      ...propCols.map((c) => `"${c.name}"`),
+    ].join(', ')
+
     const offset = page * GEO_PAGE_SIZE
 
     async function fetchPage() {
       try {
+        // IMPORTANT: wrap the parquet read + LIMIT/OFFSET in a subquery so that
+        // DuckDB applies the row limit BEFORE running ST_AsGeoJSON and ROW_NUMBER().
+        // Without this, DuckDB's window-function pipeline processes ALL rows first
+        // (e.g. all 5000 geometries) and only then applies LIMIT 200 — causing
+        // multi-second main-thread message handler violations.
+        const innerFrom = `(SELECT ${innerCols} FROM data LIMIT ${GEO_PAGE_SIZE} OFFSET ${offset}) AS _page`
+
         // Fetch total count and page data in parallel
         const [countRows, rows] = await Promise.all([
           page === 0 ? queryDB('SELECT COUNT(*) AS cnt FROM data') : Promise.resolve(null),
           queryDB(
             propSelect
-              ? `SELECT ROW_NUMBER() OVER () + ${offset} - 1 AS __row_id,
+              ? `SELECT (ROW_NUMBER() OVER () - 1 + ${offset}) AS __row_id,
                         ${geoExpr} AS __geojson,
                         ${propSelect}
-                 FROM data
-                 LIMIT ${GEO_PAGE_SIZE} OFFSET ${offset}`
-              : `SELECT ROW_NUMBER() OVER () + ${offset} - 1 AS __row_id,
+                 FROM ${innerFrom}`
+              : `SELECT (ROW_NUMBER() OVER () - 1 + ${offset}) AS __row_id,
                         ${geoExpr} AS __geojson
-                 FROM data
-                 LIMIT ${GEO_PAGE_SIZE} OFFSET ${offset}`
+                 FROM ${innerFrom}`
           ),
         ])
 

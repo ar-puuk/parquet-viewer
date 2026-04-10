@@ -16,10 +16,14 @@ export interface TableRow {
 }
 
 function buildQuery(selectCols: string, limit: number, offset: number, sort: SortState | null): string {
-  const orderBy = sort
-    ? `ORDER BY "${sort.column}" ${sort.direction.toUpperCase()} NULLS LAST`
-    : ''
-  return `SELECT ROW_NUMBER() OVER () AS __row_id, ${selectCols} FROM data ${orderBy} LIMIT ${limit} OFFSET ${offset}`
+  // Apply LIMIT/OFFSET in a subquery first so ROW_NUMBER() processes only the
+  // page rows (not the entire table). Without this, DuckDB's window-function
+  // pipeline materialises all rows before the LIMIT is applied.
+  if (sort) {
+    const orderBy = `ORDER BY "${sort.column}" ${sort.direction.toUpperCase()} NULLS LAST`
+    return `SELECT (ROW_NUMBER() OVER () + ${offset}) AS __row_id, ${selectCols} FROM (SELECT ${selectCols} FROM data ${orderBy} LIMIT ${limit} OFFSET ${offset}) AS _page`
+  }
+  return `SELECT (ROW_NUMBER() OVER () + ${offset}) AS __row_id, ${selectCols} FROM (SELECT ${selectCols} FROM data LIMIT ${limit} OFFSET ${offset}) AS _page`
 }
 
 export function useTableData() {
