@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { queryDB } from './useDuckDB'
 import { useAppStore } from '../store/useAppStore'
 
-export const PAGE_SIZE = 500
+export const PAGE_SIZE = 1000
 
 export type SortDir = 'asc' | 'desc'
 export interface SortState {
@@ -15,15 +15,17 @@ export interface TableRow {
   [key: string]: unknown
 }
 
+// Subquery isolates LIMIT/OFFSET so ROW_NUMBER() only runs on the page rows,
+// not the full table. Without this, DuckDB materialises all rows for the
+// window function before applying the LIMIT.
 function buildQuery(selectCols: string, limit: number, offset: number, sort: SortState | null): string {
-  // Apply LIMIT/OFFSET in a subquery first so ROW_NUMBER() processes only the
-  // page rows (not the entire table). Without this, DuckDB's window-function
-  // pipeline materialises all rows before the LIMIT is applied.
   if (sort) {
     const orderBy = `ORDER BY "${sort.column}" ${sort.direction.toUpperCase()} NULLS LAST`
-    return `SELECT (ROW_NUMBER() OVER () + ${offset}) AS __row_id, ${selectCols} FROM (SELECT ${selectCols} FROM data ${orderBy} LIMIT ${limit} OFFSET ${offset}) AS _page`
+    return `SELECT (ROW_NUMBER() OVER () + ${offset}) AS __row_id, ${selectCols}
+            FROM (SELECT ${selectCols} FROM data ${orderBy} LIMIT ${limit} OFFSET ${offset}) AS _page`
   }
-  return `SELECT (ROW_NUMBER() OVER () + ${offset}) AS __row_id, ${selectCols} FROM (SELECT ${selectCols} FROM data LIMIT ${limit} OFFSET ${offset}) AS _page`
+  return `SELECT (ROW_NUMBER() OVER () + ${offset}) AS __row_id, ${selectCols}
+          FROM (SELECT ${selectCols} FROM data LIMIT ${limit} OFFSET ${offset}) AS _page`
 }
 
 export function useTableData() {
@@ -31,10 +33,8 @@ export function useTableData() {
   const schema    = useAppStore((s) => s.schema)
   const totalRows = fileStats?.rowCount ?? 0
 
-  // Exclude BLOB columns from every table page query. BLOB (geometry/binary)
-  // values can be 10-100 KB each — fetching them for 500 rows at a time causes
-  // massive DuckDB worker postMessage payloads that block the main thread.
-  // TableCell already renders a placeholder for these columns regardless.
+  // Exclude BLOB columns from every query — geometry/binary values can be
+  // 10–100 KB each, causing massive DuckDB→main-thread postMessage payloads.
   const selectCols = useMemo(() => {
     if (!schema || schema.length === 0) return '*'
     const nonBlob = schema.filter(
@@ -43,111 +43,56 @@ export function useTableData() {
     return nonBlob.length > 0 ? nonBlob.map((c) => `"${c.name}"`).join(', ') : '*'
   }, [schema])
 
-  const [sort, setSort] = useState<SortState | null>(null)
+  const [page, setPageState] = useState(0)
+  const [sort, setSortState] = useState<SortState | null>(null)
+  const [rows, setRows]       = useState<TableRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [loadedCount, setLoadedCount] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [cacheVersion, setCacheVersion] = useState(0)
+  const [error, setError]     = useState<string | null>(null)
 
-  const pageCacheRef  = useRef(new Map<number, TableRow[]>())
-  const pendingRef    = useRef(new Set<number>())
-  const inflight      = useRef(0)
-  const sessionRef    = useRef(0)
-  const sortRef       = useRef<SortState | null>(null)
-  const selectColsRef = useRef(selectCols)
-  sortRef.current       = sort
-  selectColsRef.current = selectCols
+  const totalPages = totalRows > 0 ? Math.ceil(totalRows / PAGE_SIZE) : 0
 
-  // ─── Internal helpers ────────────────────────────────────────────────────
-
-  function fetchPageIfNeeded(pageIndex: number) {
-    if (pageCacheRef.current.has(pageIndex)) return
-    if (pendingRef.current.has(pageIndex)) return
-    if (pageIndex * PAGE_SIZE >= totalRows) return
-
-    pendingRef.current.add(pageIndex)
-    inflight.current++
+  // Fetch the current page whenever page, sort, or schema changes.
+  useEffect(() => {
+    if (!schema || totalRows === 0) return
+    let cancelled = false
     setIsLoading(true)
-    const session = sessionRef.current
+    setError(null)
+
+    const offset = page * PAGE_SIZE
+    const sql = buildQuery(selectCols, PAGE_SIZE, offset, sort)
 
     ;(async () => {
       try {
-        const offset = pageIndex * PAGE_SIZE
-        const sql = buildQuery(selectColsRef.current, PAGE_SIZE, offset, sortRef.current)
-        const result = (await queryDB(sql)) as TableRow[]
-        if (session !== sessionRef.current) return
-
-        pageCacheRef.current.set(pageIndex, result)
-        setLoadedCount((c) => c + result.length)
-        setCacheVersion((v) => v + 1)
+        const result = await queryDB(sql)
+        if (cancelled) return
+        // Yield to let the browser paint before committing rows to state.
+        await new Promise<void>((r) => setTimeout(r, 0))
+        if (cancelled) return
+        setRows(result as TableRow[])
       } catch (e) {
-        if (session !== sessionRef.current) return
-        pendingRef.current.delete(pageIndex)
+        if (cancelled) return
         setError(e instanceof Error ? e.message : String(e))
       } finally {
-        if (session === sessionRef.current) {
-          inflight.current--
-          if (inflight.current === 0) setIsLoading(false)
-        }
+        if (!cancelled) setIsLoading(false)
       }
     })()
-  }
 
-  // ─── Public API ──────────────────────────────────────────────────────────
+    return () => { cancelled = true }
+  }, [page, sort, selectCols, totalRows, schema])
 
-  const prefetchRange = useCallback(
-    (startIdx: number, endIdx: number) => {
-      if (totalRows === 0) return
-      const startPage = Math.floor(Math.max(0, startIdx) / PAGE_SIZE)
-      const endPage   = Math.floor(Math.min(totalRows - 1, endIdx) / PAGE_SIZE)
-      for (let p = startPage; p <= endPage; p++) {
-        fetchPageIfNeeded(p)
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [totalRows]
-  )
-
-  const getRow = useCallback(
-    (_cacheVersion: number, index: number): TableRow | undefined => {
-      const page = Math.floor(index / PAGE_SIZE)
-      return pageCacheRef.current.get(page)?.[index % PAGE_SIZE]
-    },
-    []
-  )
-
-  const isRowLoading = useCallback((index: number): boolean => {
-    const page = Math.floor(index / PAGE_SIZE)
-    return pendingRef.current.has(page) && !pageCacheRef.current.has(page)
+  const setPage = useCallback((p: number) => {
+    setPageState(Math.max(0, p))
   }, [])
 
-  const handleSetSort = useCallback((column: string) => {
-    sessionRef.current++
-    pageCacheRef.current = new Map()
-    pendingRef.current   = new Set()
-    inflight.current     = 0
-    setLoadedCount(0)
-    setIsLoading(false)
-    setError(null)
-    setCacheVersion(0)
-
-    setSort((prev) => {
+  // Cycling sort: none → asc → desc → none. Resets to page 0 on change.
+  const setSort = useCallback((column: string) => {
+    setPageState(0)
+    setSortState((prev) => {
       if (prev?.column !== column) return { column, direction: 'asc' }
-      if (prev.direction === 'asc') return { column, direction: 'desc' }
+      if (prev.direction === 'asc')  return { column, direction: 'desc' }
       return null
     })
   }, [])
 
-  return {
-    totalRows,
-    loadedCount,
-    cacheVersion,
-    getRow,
-    isRowLoading,
-    prefetchRange,
-    isLoading,
-    error,
-    sort,
-    setSort: handleSetSort,
-  }
+  return { rows, totalRows, totalPages, page, isLoading, error, sort, setSort, setPage }
 }
