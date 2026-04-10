@@ -147,7 +147,11 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
 
         const pageFeatures: GeoFeature[] = []
         for (const row of rows) {
-          const geojson = String(row['__geojson'] ?? '')
+          const raw = row['__geojson']
+          const geojson = raw == null ? '' :
+            typeof raw === 'string' ? raw :
+            typeof raw === 'object' ? JSON.stringify(raw) :
+            String(raw)
           if (!geojson || geojson === 'null') continue
           const properties: Record<string, unknown> = {}
           for (const col of propCols) {
