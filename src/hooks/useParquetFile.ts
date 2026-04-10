@@ -52,6 +52,17 @@ function classifyError(e: unknown): string {
   if (lower.includes('not a parquet file') || lower.includes('invalid parquet')) {
     return 'Invalid file: this does not appear to be a valid Parquet file.'
   }
+  if (lower.includes('zstd') || lower.includes('zstandard')) {
+    return (
+      'ZSTD compression is not supported in this browser\'s WebAssembly engine.\n\n' +
+      'Re-compress the file using Snappy or Gzip, then reload:\n\n' +
+      '  # DuckDB CLI\n' +
+      '  COPY (SELECT * FROM \'file.parquet\') TO \'out.parquet\' (FORMAT PARQUET, CODEC \'SNAPPY\');\n\n' +
+      '  # Python / PyArrow\n' +
+      '  import pyarrow.parquet as pq\n' +
+      '  pq.write_table(pq.read_table(\'file.parquet\'), \'out.parquet\', compression=\'snappy\')'
+    )
+  }
   return msg
 }
 
