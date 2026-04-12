@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import proj4 from 'proj4'
 import { queryDB } from './useDuckDB'
 import { useAppStore } from '../store/useAppStore'
 import type { GeoInfo } from '../types'
@@ -24,8 +25,9 @@ export interface GeoDataResult {
  *   2. If the geometry column was excluded from the user's query, fall back to
  *      re-querying with the same LIMIT directly from `data`.
  *
- * The __row_id in the geo result matches the __row_id in queryResult rows so
- * Phase 5 map↔table sync can correlate them.
+ * Reprojection: ST_Transform in DuckDB WASM is unreliable (stripped PROJ DB).
+ * Instead, when geoInfo.proj4String is set the raw coordinates are reprojected
+ * client-side using proj4js after DuckDB returns the GeoJSON.
  */
 export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
   const queryResult = useAppStore((s) => s.queryResult)
@@ -42,7 +44,6 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
       return
     }
 
-    // No query result yet — show nothing on map (user hasn't run a query)
     if (!queryResult) {
       setFeatures([])
       return
@@ -53,41 +54,22 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
     setLoading(true)
     setError(null)
 
-    const geo = geoInfo  // narrow to non-null for use inside async closure
+    const geo = geoInfo
 
-    // Build the GeoJSON expression. Strategy per encoding:
-    //
-    // 'native'  = DuckDB GEOMETRY type → use directly
-    // 'struct'  = GeoArrow struct alias (POINT_2D / POLYGON_2D / etc.).
-    //             DuckDB WASM has no cast to GEOMETRY and ST_AsGeoJSON only
-    //             accepts GEOMETRY in this build. Build WKT manually from the
-    //             struct coordinates using list_transform + list_aggregate,
-    //             then convert via ST_GeomFromText. The geometry type (POINT,
-    //             LINESTRING, POLYGON, MULTIPOLYGON) is inferred from the
-    //             array nesting depth of the column type.
-    // 'wkb'/'wkt' = binary/text → ST_GeomFromWKB / ST_GeomFromText
+    // ── Build GeoJSON expression (no ST_Transform — reprojection done client-side) ──
     const col = `"${geo.geometryColumn}"`
-    const epsgFrom = geo.epsg != null && geo.epsg !== 4326 ? geo.epsg : null
 
     let geoExpr: string
     if (geo.encoding === 'native') {
-      const geomExpr = col
-      geoExpr = epsgFrom
-        ? `ST_AsGeoJSON(ST_Transform(${geomExpr}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
-        : `ST_AsGeoJSON(${geomExpr})`
+      geoExpr = `ST_AsGeoJSON(${col})`
     } else if (geo.encoding === 'struct') {
       const wktExpr = buildStructWktExpr(col, geo.structType ?? '')
-      const geomExpr = `ST_GeomFromText(${wktExpr})`
-      geoExpr = epsgFrom
-        ? `ST_AsGeoJSON(ST_Transform(${geomExpr}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
-        : `ST_AsGeoJSON(${geomExpr})`
+      geoExpr = `ST_AsGeoJSON(ST_GeomFromText(${wktExpr}))`
     } else {
       const geomExpr = geo.encoding === 'wkt'
         ? `ST_GeomFromText(${col})`
         : `ST_GeomFromWKB(${col})`
-      geoExpr = epsgFrom
-        ? `ST_AsGeoJSON(ST_Transform(${geomExpr}, 'EPSG:${epsgFrom}', 'EPSG:4326'))`
-        : `ST_AsGeoJSON(${geomExpr})`
+      geoExpr = `ST_AsGeoJSON(${geomExpr})`
     }
 
     // Property columns: everything except the geometry column and __row_id
@@ -99,20 +81,19 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
     )
     const propSelect = propCols.map((c) => `"${c.name}"`).join(', ')
 
-    // Check whether the geometry column appears in the query result columns.
-    // If it does, we can build the geo query from the user's SQL directly.
     const geoInResult = queryResult.columns.includes(geo.geometryColumn)
-
-    // Number of rows in the query result — use same limit for geo companion.
     const limit = queryResult.rows.length || 1000
+
+    // Determine proj4 definition for client-side reprojection.
+    // proj4String is set by CrsPanel when the user applies a CRS override.
+    const proj4Def  = geo.proj4String ?? null
+    const needsReproject = proj4Def !== null
 
     async function fetchFeatures() {
       try {
         let sql: string
 
         if (geoInResult) {
-          // Geometry column is present in the result — wrap the original query
-          // so the geometry data comes from the same filtered/ordered result set.
           sql = propSelect
             ? `SELECT (ROW_NUMBER() OVER () - 1) AS __row_id,
                       ${geoExpr} AS __geojson,
@@ -122,8 +103,6 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
                       ${geoExpr} AS __geojson
                FROM (${queryResult!.sql}) AS _q`
         } else {
-          // Geometry column was excluded from the user query (e.g. SELECT * EXCLUDE).
-          // Re-query the base table with the same limit so map ≈ table.
           const innerCols = [
             `"${geo.geometryColumn}"`,
             ...propCols.map((c) => `"${c.name}"`),
@@ -141,18 +120,35 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
         const rows = await queryDB(sql)
         if (session !== sessionRef.current) return
 
-        // Yield before processing to avoid blocking the main thread
         await new Promise<void>((r) => setTimeout(r, 0))
         if (session !== sessionRef.current) return
+
+        // Register proj4 definition once (idempotent)
+        if (needsReproject && proj4Def) {
+          proj4.defs(`EPSG:${geo.epsg}`, proj4Def)
+        }
 
         const pageFeatures: GeoFeature[] = []
         for (const row of rows) {
           const raw = row['__geojson']
-          const geojson = raw == null ? '' :
+          let geojson = raw == null ? '' :
             typeof raw === 'string' ? raw :
             typeof raw === 'object' ? JSON.stringify(raw) :
             String(raw)
           if (!geojson || geojson === 'null') continue
+
+          // Client-side reprojection from source CRS → WGS84
+          if (needsReproject && geo.epsg !== null) {
+            try {
+              const geom = JSON.parse(geojson) as Record<string, unknown>
+              const reprojected = reprojectGeom(geom, `EPSG:${geo.epsg}`, 'WGS84')
+              geojson = JSON.stringify(reprojected)
+            } catch {
+              // Malformed geometry — skip
+              continue
+            }
+          }
+
           const properties: Record<string, unknown> = {}
           for (const col of propCols) {
             properties[col.name] = row[col.name]
@@ -175,30 +171,67 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
   return { features, loading, error }
 }
 
+// ── Client-side reprojection ──────────────────────────────────────────────────
+
+/**
+ * Recursively reproject all coordinates in a GeoJSON geometry object
+ * from `fromCrs` to WGS84 using proj4js.
+ */
+function reprojectGeom(
+  geom: Record<string, unknown>,
+  fromCrs: string,
+  toCrs: string
+): Record<string, unknown> {
+  const rp = (c: number[]) => proj4(fromCrs, toCrs, c)
+
+  switch (geom.type as string) {
+    case 'Point':
+      return { ...geom, coordinates: rp(geom.coordinates as number[]) }
+
+    case 'MultiPoint':
+    case 'LineString':
+      return { ...geom, coordinates: (geom.coordinates as number[][]).map(rp) }
+
+    case 'MultiLineString':
+    case 'Polygon':
+      return {
+        ...geom,
+        coordinates: (geom.coordinates as number[][][]).map((ring) => ring.map(rp)),
+      }
+
+    case 'MultiPolygon':
+      return {
+        ...geom,
+        coordinates: (geom.coordinates as number[][][][]).map((poly) =>
+          poly.map((ring) => ring.map(rp))
+        ),
+      }
+
+    case 'GeometryCollection':
+      return {
+        ...geom,
+        geometries: (geom.geometries as Array<Record<string, unknown>>).map((g) =>
+          reprojectGeom(g, fromCrs, toCrs)
+        ),
+      }
+
+    default:
+      return geom
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
  * Build a DuckDB SQL expression that produces a WKT string from a GeoArrow
  * struct column (POINT_2D / LINESTRING_2D / POLYGON_2D / MULTIPOLYGON_2D).
- *
- * DuckDB WASM does not support CAST(struct AS GEOMETRY) and ST_AsGeoJSON only
- * accepts GEOMETRY in this build, so we reconstruct WKT using pure SQL list
- * and string functions that work on the raw struct values.
- *
- * Depth is inferred from the number of [] pairs in the DuckDB type string:
- *   0 = POINT_2D      (STRUCT(x, y))
- *   1 = LINESTRING_2D (STRUCT(x, y)[])
- *   2 = POLYGON_2D    (STRUCT(x, y)[][])
- *   3 = MULTIPOLYGON  (STRUCT(x, y)[][][])
  */
 function buildStructWktExpr(col: string, structType: string): string {
   const depth = (structType.match(/\[\]/g) ?? []).length
 
-  // coord pair as "x y"
   const coordPair = (pt: string) =>
     `${pt}.x::VARCHAR || ' ' || ${pt}.y::VARCHAR`
 
-  // ring → "(x1 y1,x2 y2,...)"
   const ringWkt = (ring: string) =>
     `'(' || list_aggregate(list_transform(${ring}, _p -> ${coordPair('_p')}), 'string_agg', ',') || ')'`
 
@@ -224,7 +257,6 @@ function buildStructWktExpr(col: string, structType: string): string {
       )
 
     default:
-      // Unknown depth — fall back to polygon interpretation
       return (
         `('POLYGON(' || ` +
         `list_aggregate(list_transform(${col}, _r -> ${ringWkt('_r')}), 'string_agg', ',') || ')')`

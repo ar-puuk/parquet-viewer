@@ -72,7 +72,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
           if (b.every(isFinite)) bbox = b as [number, number, number, number]
         }
 
-        return { geometryColumn: primaryCol, encoding, crsString, isWGS84, bbox, epsg }
+        return { geometryColumn: primaryCol, encoding, crsString, isWGS84, bbox, epsg, proj4String: null }
       }
     }
   } catch {
@@ -89,7 +89,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
       upperType === 'GEOMETRY' &&
       (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
     ) {
-      return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
 
     // GeoArrow struct aliases (POINT_2D = STRUCT(x,y), POLYGON_2D = STRUCT(x,y)[][], etc.)
@@ -97,17 +97,17 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
       upperType === 'STRUCT' &&
       (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
     ) {
-      return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
 
     // WKT: VARCHAR columns with known WKT names, or geo-named VARCHAR columns
     if ((WKT_COLUMN_NAMES.has(lower) || GEO_COLUMN_NAMES.has(lower)) && upperType === 'VARCHAR') {
-      return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
 
     // WKB: BLOB columns with known geo names
     if (GEO_COLUMN_NAMES.has(lower) && upperType === 'BLOB') {
-      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
   }
 
@@ -116,13 +116,13 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
     if (upperType === 'GEOMETRY' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
-      return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
     if (upperType === 'STRUCT' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
-      return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
     if (upperType === 'BLOB' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
-      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding: 'wkb', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
   }
 
@@ -136,7 +136,7 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
         upperType === 'GEOMETRY' ? 'native' :
         upperType === 'STRUCT' ? 'struct' : 'wkb'
       const structType = encoding === 'struct' ? col.type : undefined
-      return { geometryColumn: col.name, encoding, structType, crsString: null, isWGS84: true, bbox: null, epsg: null }
+      return { geometryColumn: col.name, encoding, structType, crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
   }
 

@@ -42,8 +42,15 @@ export interface GeoInfo {
   isWGS84: boolean
   /** Bounding box from GeoParquet metadata [minx, miny, maxx, maxy], if present */
   bbox: [number, number, number, number] | null
-  /** Source EPSG code. null = unknown (assumed 4326). Used for ST_Transform. */
+  /** Source EPSG code. null = unknown (assumed 4326). */
   epsg: number | null
+  /**
+   * proj4 definition string fetched from epsg.io for the source CRS.
+   * Populated when the user applies a CRS override. Used for client-side
+   * coordinate reprojection (proj4js) instead of DuckDB ST_Transform, which
+   * is unreliable in the WASM build due to a stripped PROJ database.
+   */
+  proj4String: string | null
 }
 
 export interface QueryResult {
