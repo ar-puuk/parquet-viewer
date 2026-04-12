@@ -66,10 +66,11 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
       geoExpr = `ST_AsGeoJSON(${col}::GEOMETRY)`
     } else if (geo.encoding === 'struct') {
       // Physical GeoArrow struct type (STRUCT(x DOUBLE, y DOUBLE)[][] etc.).
-      // DuckDB WASM does not implement the ::GEOMETRY cast for the raw struct type,
-      // so we serialise it as JSON and convert the {x,y} objects to GeoJSON
-      // coordinate arrays on the client side.
-      geoExpr = `to_json(${col})::VARCHAR`
+      // Select the raw column — DuckDB WASM returns it as a nested JS object
+      // via Arrow. We convert the {x,y} coordinate objects to GeoJSON on the
+      // client side. to_json() is avoided because the spatial extension may
+      // override it to return null for unrecognised struct geometry types.
+      geoExpr = col
     } else {
       const geomExpr = geo.encoding === 'wkt'
         ? `ST_GeomFromText(${col})`
@@ -136,20 +137,30 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
         const pageFeatures: GeoFeature[] = []
         for (const row of rows) {
           const raw = row['__geojson']
-          let geojson = raw == null ? '' :
-            typeof raw === 'string' ? raw :
-            typeof raw === 'object' ? JSON.stringify(raw) :
-            String(raw)
-          if (!geojson || geojson === 'null') continue
+          let geojson: string
 
-          // GeoArrow struct → GeoJSON conversion (struct encoding only).
-          // DuckDB returns the column as serialised {x,y} objects; convert to
-          // the [lng, lat] coordinate arrays that GeoJSON expects.
           if (geo.encoding === 'struct') {
+            // raw is the Arrow representation of the GeoArrow struct column
+            // (nested JS array/object). A JSON round-trip strips any Arrow
+            // proxy wrappers and gives us plain {x, y} objects that
+            // geoArrowToGeometry can consume.
+            if (raw == null) continue
             const structDepth = (geo.structType ?? '').match(/\[\]/g)?.length ?? 0
-            const converted = geoArrowStructToGeoJSON(geojson, structDepth)
-            if (!converted) continue
-            geojson = JSON.stringify(converted)
+            try {
+              const structData = JSON.parse(JSON.stringify(raw))
+              const converted = geoArrowToGeometry(structData, structDepth)
+              if (!converted) continue
+              geojson = JSON.stringify(converted)
+            } catch { continue }
+          } else {
+            // ST_AsGeoJSON returns a GeoJSON string; DuckDB may also hand back
+            // a pre-parsed object via Arrow — normalise either way.
+            const asStr = raw == null ? '' :
+              typeof raw === 'string' ? raw :
+              typeof raw === 'object' ? JSON.stringify(raw) :
+              String(raw)
+            if (!asStr || asStr === 'null') continue
+            geojson = asStr
           }
 
           // Client-side reprojection from source CRS → WGS84
@@ -238,44 +249,35 @@ function reprojectGeom(
 // ── GeoArrow struct → GeoJSON ─────────────────────────────────────────────────
 
 /**
- * Convert a DuckDB `to_json()` serialisation of a GeoArrow struct column into
- * a GeoJSON Geometry object.
- *
- * DuckDB WASM cannot cast the physical struct type to GEOMETRY directly, so we
- * read the struct as JSON and reconstruct the coordinate arrays here.
+ * Convert a GeoArrow struct value (returned by DuckDB WASM via Arrow) into a
+ * GeoJSON Geometry object. The Arrow representation mirrors the DuckDB type:
  *
  * depth 0 → POINT_2D       : {x, y}
  * depth 1 → LINESTRING_2D  : [{x, y}, ...]
  * depth 2 → POLYGON_2D     : [[{x, y}, ...], ...]
  * depth 3 → MULTIPOLYGON_2D: [[[{x, y}, ...], ...], ...]
+ *
+ * Number() coercion handles the case where Arrow returns coordinate values as
+ * strings rather than numbers (implementation detail that varies by version).
  */
-function geoArrowStructToGeoJSON(jsonStr: string, depth: number): GeoJSON.Geometry | null {
-  try {
-    const data = JSON.parse(jsonStr)
-    return geoArrowToGeometry(data, depth)
-  } catch {
-    return null
-  }
-}
-
 function geoArrowToGeometry(data: unknown, depth: number): GeoJSON.Geometry | null {
   if (depth === 0) {
-    const p = data as { x: number; y: number }
-    return { type: 'Point', coordinates: [p.x, p.y] }
+    const p = data as { x: unknown; y: unknown }
+    return { type: 'Point', coordinates: [Number(p.x), Number(p.y)] }
   }
   if (depth === 1) {
-    const pts = data as Array<{ x: number; y: number }>
-    return { type: 'LineString', coordinates: pts.map((p) => [p.x, p.y]) }
+    const pts = data as Array<{ x: unknown; y: unknown }>
+    return { type: 'LineString', coordinates: pts.map((p) => [Number(p.x), Number(p.y)]) }
   }
   if (depth === 2) {
-    const rings = data as Array<Array<{ x: number; y: number }>>
-    return { type: 'Polygon', coordinates: rings.map((ring) => ring.map((p) => [p.x, p.y])) }
+    const rings = data as Array<Array<{ x: unknown; y: unknown }>>
+    return { type: 'Polygon', coordinates: rings.map((ring) => ring.map((p) => [Number(p.x), Number(p.y)])) }
   }
   if (depth === 3) {
-    const polys = data as Array<Array<Array<{ x: number; y: number }>>>
+    const polys = data as Array<Array<Array<{ x: unknown; y: unknown }>>>
     return {
       type: 'MultiPolygon',
-      coordinates: polys.map((poly) => poly.map((ring) => ring.map((p) => [p.x, p.y]))),
+      coordinates: polys.map((poly) => poly.map((ring) => ring.map((p) => [Number(p.x), Number(p.y)]))),
     }
   }
   return null
