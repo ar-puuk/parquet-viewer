@@ -45,3 +45,42 @@
 .dark * {
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
+
+/* ── MapLibre popup — dark mode ──────────────────────────────────────────── */
+
+.dark .maplibregl-popup-content {
+  background: #1e2130;
+  color: #e2e8f0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+/* Popup tip (the little arrow) */
+.dark .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: #1e2130;
+}
+.dark .maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: #1e2130;
+}
+.dark .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #1e2130;
+}
+.dark .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #1e2130;
+}
+.dark .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.dark .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: #1e2130;
+}
+.dark .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.dark .maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #1e2130;
+}
+
+/* Close button */
+.dark .maplibregl-popup-close-button {
+  color: #94a3b8;
+}
+.dark .maplibregl-popup-close-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
