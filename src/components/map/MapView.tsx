@@ -219,9 +219,13 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
     function pushData() {
       // Defer inside rAF so MapLibre's setData doesn't force a synchronous
       // layout recalculation (forced reflow) during a JS task.
+      // Use the locally-captured 'map' (not mapRef.current) so we always query
+      // the same instance the effect was initialised with — mapRef.current can
+      // theoretically be null if the component unmounts between scheduling the
+      // rAF and its execution, even though the cleanup cancels the rAF.
       rafId = requestAnimationFrame(() => {
-        const src = mapRef.current?.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-        console.log('[map-debug] pushData rAF | mapNull:', !mapRef.current, '| src:', !!src, '| features:', geojson.features.length, '| first geom:', geojson.features[0]?.geometry?.type, geojson.features[0]?.geometry?.type === 'Polygon' ? (geojson.features[0].geometry as GeoJSON.Polygon).coordinates[0][0] : '')
+        const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+        console.log('[map-debug] pushData rAF | src:', !!src, '| features:', geojson.features.length, '| first geom:', geojson.features[0]?.geometry?.type, geojson.features[0]?.geometry?.type === 'Polygon' ? (geojson.features[0].geometry as GeoJSON.Polygon).coordinates[0][0] : '')
         if (src) src.setData(geojson)
       })
     }
