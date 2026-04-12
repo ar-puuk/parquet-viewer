@@ -207,6 +207,7 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       // layout recalculation (forced reflow) during a JS task.
       rafId = requestAnimationFrame(() => {
         const src = mapRef.current?.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+        console.log('[map-debug] pushData src:', !!src, '| features:', geojson.features.length, '| first geom:', geojson.features[0]?.geometry?.type, geojson.features[0]?.geometry?.type === 'Polygon' ? (geojson.features[0].geometry as GeoJSON.Polygon).coordinates[0][0] : '')
         if (src) src.setData(geojson)
       })
     }
@@ -215,6 +216,7 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       // Ensure layers exist — addLayers is idempotent so calling it here is safe
       // when there's a race between this effect and the addLayers effect.
       if (!layersAddedRef.current) addLayers(map)
+      console.log('[map-debug] pushData called | styleLoaded:true | layersAdded:', layersAddedRef.current)
       pushData()
     } else {
       map.once('style.load', () => setTimeout(pushData, 0))
