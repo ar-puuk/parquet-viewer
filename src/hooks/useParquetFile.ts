@@ -20,7 +20,12 @@ async function resolveGeoEncoding(geoInfo: import('../types').GeoInfo): Promise<
       `SELECT column_type FROM (DESCRIBE data) WHERE column_name = '${col}' LIMIT 1`
     )
     const updatedType = String(rows[0]?.['column_type'] ?? '').split('(')[0].toUpperCase().trim()
-    if (updatedType === 'GEOMETRY') {
+    const GEOARROW_TYPES = new Set([
+      'GEOMETRY',
+      'POINT_2D', 'LINESTRING_2D', 'POLYGON_2D',
+      'MULTIPOINT_2D', 'MULTILINESTRING_2D', 'MULTIPOLYGON_2D',
+    ])
+    if (GEOARROW_TYPES.has(updatedType)) {
       return { ...geoInfo, encoding: 'native' }
     }
   } catch {

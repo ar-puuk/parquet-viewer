@@ -48,6 +48,16 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
     features: features.flatMap((f) => {
       try {
         const geometry = JSON.parse(f.geojson) as GeoJSON.Geometry
+        // Explode GeometryCollection into individual features so each sub-geometry
+        // is matched by one of the typed layer filters (circle / line / fill).
+        if (geometry.type === 'GeometryCollection') {
+          return geometry.geometries.map((g) => ({
+            type: 'Feature' as const,
+            id: f.__row_id,
+            geometry: g,
+            properties: { ...f.properties, __row_id: f.__row_id },
+          }))
+        }
         return [{
           type: 'Feature' as const,
           id: f.__row_id,
@@ -108,7 +118,7 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       id: LAYER_CIRCLE,
       type: 'circle',
       source: SOURCE_ID,
-      filter: ['==', ['geometry-type'], 'Point'],
+      filter: ['in', ['geometry-type'], ['literal', ['Point', 'MultiPoint']]],
       paint: {
         'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 8, 5],
         'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#6366f1', '#3b82f6'],

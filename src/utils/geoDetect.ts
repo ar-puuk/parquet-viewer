@@ -197,8 +197,9 @@ export async function coordinatesLookGeographic(geoInfo: GeoInfo): Promise<boole
       } else if (geoInfo.encoding === 'wkt') {
         geomExpr = `ST_GeomFromText(${col})`
       } else {
-        // native GEOMETRY
-        geomExpr = col
+        // native GEOMETRY or GeoArrow alias (POLYGON_2D etc.) — ::GEOMETRY cast
+        // ensures the spatial extension can convert either to GeoJSON.
+        geomExpr = `${col}::GEOMETRY`
       }
 
       const rows = await queryDB(

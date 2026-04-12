@@ -60,11 +60,10 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
     const col = `"${geo.geometryColumn}"`
 
     let geoExpr: string
-    if (geo.encoding === 'native') {
-      geoExpr = `ST_AsGeoJSON(${col})`
-    } else if (geo.encoding === 'struct') {
-      const wktExpr = buildStructWktExpr(col, geo.structType ?? '')
-      geoExpr = `ST_AsGeoJSON(ST_GeomFromText(${wktExpr}))`
+    if (geo.encoding === 'native' || geo.encoding === 'struct') {
+      // ::GEOMETRY cast handles both DuckDB native GEOMETRY columns and GeoArrow
+      // aliases (POINT_2D, POLYGON_2D, etc.) which the spatial extension exposes.
+      geoExpr = `ST_AsGeoJSON(${col}::GEOMETRY)`
     } else {
       const geomExpr = geo.encoding === 'wkt'
         ? `ST_GeomFromText(${col})`
