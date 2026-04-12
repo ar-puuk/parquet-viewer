@@ -172,7 +172,7 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
               geojson = JSON.stringify(reprojected)
               if (pageFeatures.length === 0) {
                 // Log only the first feature to avoid console flooding
-                const firstCoord = (reprojected as GeoJSON.Polygon).coordinates?.[0]?.[0]
+                const firstCoord = (reprojected as unknown as GeoJSON.Polygon).coordinates?.[0]?.[0]
                 console.log('[geo-debug] reprojected first coord:', firstCoord, '| epsg:', geo.epsg)
               }
             } catch (err) {
