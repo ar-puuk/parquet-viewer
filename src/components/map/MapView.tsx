@@ -60,6 +60,10 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
     }),
   }), [features])
 
+  // Stable ref so addLayers callback can push current data after a style swap
+  const geojsonRef = useRef(geojson)
+  geojsonRef.current = geojson
+
   // ── Init map once ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
@@ -163,7 +167,16 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const init = () => addLayers(map)
+    const init = () => {
+      addLayers(map)
+      // After layers are (re-)added, re-push current data so the source isn't
+      // left empty — this is critical after a style swap (theme change) because
+      // the pushData effect won't re-run when geojson hasn't changed.
+      requestAnimationFrame(() => {
+        const src = mapRef.current?.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+        if (src) src.setData(geojsonRef.current)
+      })
+    }
     if (map.isStyleLoaded()) {
       init()
     } else {
@@ -188,7 +201,10 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       })
     }
 
-    if (map.isStyleLoaded() && layersAddedRef.current) {
+    if (map.isStyleLoaded()) {
+      // Ensure layers exist — addLayers is idempotent so calling it here is safe
+      // when there's a race between this effect and the addLayers effect.
+      if (!layersAddedRef.current) addLayers(map)
       pushData()
     } else {
       map.once('style.load', () => setTimeout(pushData, 0))
