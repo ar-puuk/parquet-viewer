@@ -146,13 +146,10 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
             // geoArrowToGeometry can consume.
             if (raw == null) { console.warn('[geo-debug] raw is null, skipping row'); continue }
             const structDepth = (geo.structType ?? '').match(/\[\]/g)?.length ?? 0
-            console.log('[geo-debug] raw type:', typeof raw, '| constructor:', (raw as object)?.constructor?.name, '| depth:', structDepth, '| value:', raw)
             try {
               const serialised = JSON.stringify(raw)
-              console.log('[geo-debug] JSON.stringify result:', serialised?.slice(0, 200))
               const structData = JSON.parse(serialised)
               const converted = geoArrowToGeometry(structData, structDepth)
-              console.log('[geo-debug] converted geometry:', converted ? converted.type : 'null')
               if (!converted) continue
               geojson = JSON.stringify(converted)
             } catch (err) { console.error('[geo-debug] conversion error:', err); continue }
@@ -173,10 +170,17 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
               const geom = JSON.parse(geojson) as Record<string, unknown>
               const reprojected = reprojectGeom(geom, `EPSG:${geo.epsg}`, 'WGS84')
               geojson = JSON.stringify(reprojected)
-            } catch {
-              // Malformed geometry — skip
+              if (pageFeatures.length === 0) {
+                // Log only the first feature to avoid console flooding
+                const firstCoord = (reprojected as GeoJSON.Polygon).coordinates?.[0]?.[0]
+                console.log('[geo-debug] reprojected first coord:', firstCoord, '| epsg:', geo.epsg)
+              }
+            } catch (err) {
+              if (pageFeatures.length === 0) console.error('[geo-debug] reprojection error:', err)
               continue
             }
+          } else if (pageFeatures.length === 0) {
+            console.log('[geo-debug] needsReproject:', needsReproject, '| epsg:', geo.epsg, '| proj4String set:', !!geo.proj4String)
           }
 
           const properties: Record<string, unknown> = {}
@@ -186,6 +190,7 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
           pageFeatures.push({ __row_id: Number(row['__row_id']), geojson, properties })
         }
 
+        console.log('[geo-debug] setFeatures count:', pageFeatures.length)
         setFeatures(pageFeatures)
       } catch (e) {
         if (session !== sessionRef.current) return
