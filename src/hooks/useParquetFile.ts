@@ -100,6 +100,13 @@ export function useParquetFile() {
       const conn = getConnection()
       if (!db || !conn) throw new Error('DuckDB is not ready yet')
 
+      // Drop the view and unregister the previous file before loading a new one.
+      // DuckDB-WASM caches row-group metadata internally keyed by filename; without
+      // this, re-registering 'data.parquet' with different content can cause reads
+      // against stale cached data from the previous file (e.g. wrong codec errors).
+      await conn.query('DROP VIEW IF EXISTS data')
+      try { await db.dropFile(REGISTERED_NAME) } catch { /* file may not exist yet */ }
+
       const buffer = await file.arrayBuffer()
       await db.registerFileBuffer(REGISTERED_NAME, new Uint8Array(buffer))
       await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
@@ -146,6 +153,10 @@ export function useParquetFile() {
       const db = getDBInstance()
       const conn = getConnection()
       if (!db || !conn) throw new Error('DuckDB is not ready yet')
+
+      // Same cache-busting as loadFile: drop view and unregister previous file.
+      await conn.query('DROP VIEW IF EXISTS data')
+      try { await db.dropFile(REGISTERED_NAME) } catch { /* file may not exist yet */ }
 
       const url = normalizeUrl(rawUrl)
       await db.registerFileURL(
