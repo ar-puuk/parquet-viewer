@@ -34,6 +34,10 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
   const setHoveredRowId = useAppStore((s) => s.setHoveredRowId)
 
   const prevSelectedRef = useRef<number | null>(null)
+  // Skip the isDark effect on mount — map is already initialised with the
+  // correct style; calling setStyle again immediately cancels the first load
+  // and races with the addLayers effect's style.load listener.
+  const themeInitRef = useRef(false)
   // Stable ref so fly-to effect can read current features without being a dep
   const featuresRef = useRef(features)
   featuresRef.current = features
@@ -98,14 +102,20 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
 
   // ── Theme: swap style ────────────────────────────────────────────────────
   useEffect(() => {
+    // Skip on mount: the map was already created with the correct style above.
+    // Calling setStyle immediately would cancel the first style load and race
+    // with the addLayers effect's once('style.load') listener.
+    if (!themeInitRef.current) { themeInitRef.current = true; return }
     const map = mapRef.current
     if (!map) return
+    console.log('[map-debug] isDark effect SWAP | isDark:', isDark)
     layersAddedRef.current = false // layers are wiped when style changes
     map.setStyle(isDark ? DARK_STYLE : LIGHT_STYLE)
   }, [isDark])
 
   // ── Add layers once after style loads; re-add after style swap ───────────
   function addLayers(map: maplibregl.Map) {
+    console.log('[map-debug] addLayers | circleExists:', !!map.getLayer(LAYER_CIRCLE), '| srcExists:', !!map.getSource(SOURCE_ID))
     if (map.getLayer(LAYER_CIRCLE)) return // already added
 
     map.addSource(SOURCE_ID, {
@@ -113,6 +123,7 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       data: { type: 'FeatureCollection', features: [] },
       promoteId: '__row_id',
     })
+    console.log('[map-debug] addLayers: source added ok:', !!map.getSource(SOURCE_ID))
 
     map.addLayer({
       id: LAYER_CIRCLE,
@@ -183,14 +194,17 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       // left empty — this is critical after a style swap (theme change) because
       // the pushData effect won't re-run when geojson hasn't changed.
       requestAnimationFrame(() => {
-        const src = mapRef.current?.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+        const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+        console.log('[map-debug] addLayers effect rAF | src:', !!src)
         if (src) src.setData(geojsonRef.current)
       })
     }
     if (map.isStyleLoaded()) {
+      console.log('[map-debug] addLayers effect: style already loaded, calling init')
       init()
     } else {
-      map.once('style.load', init)
+      console.log('[map-debug] addLayers effect: waiting for style.load')
+      map.once('style.load', () => { console.log('[map-debug] style.load fired'); init() })
     }
   // setHoveredRowId is stable; re-run whenever map is ready or style swaps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,7 +221,7 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       // layout recalculation (forced reflow) during a JS task.
       rafId = requestAnimationFrame(() => {
         const src = mapRef.current?.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-        console.log('[map-debug] pushData src:', !!src, '| features:', geojson.features.length, '| first geom:', geojson.features[0]?.geometry?.type, geojson.features[0]?.geometry?.type === 'Polygon' ? (geojson.features[0].geometry as GeoJSON.Polygon).coordinates[0][0] : '')
+        console.log('[map-debug] pushData rAF | mapNull:', !mapRef.current, '| src:', !!src, '| features:', geojson.features.length, '| first geom:', geojson.features[0]?.geometry?.type, geojson.features[0]?.geometry?.type === 'Polygon' ? (geojson.features[0].geometry as GeoJSON.Polygon).coordinates[0][0] : '')
         if (src) src.setData(geojson)
       })
     }
