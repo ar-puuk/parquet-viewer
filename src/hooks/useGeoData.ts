@@ -51,6 +51,17 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
 
     const session = ++sessionRef.current
     setFeatures([])
+
+    // If the file has a projected (non-WGS84) CRS but the user hasn't set a
+    // proj4 definition yet, pushing raw projected coordinates to MapLibre would
+    // place features far outside the valid [-180,180] x [-90,90] range and can
+    // corrupt the GeoJSON source state — making the map unresponsive to the
+    // second setData call when valid WGS84 data arrives. Bail early and let
+    // CrsPanel prompt the user to configure CRS first.
+    if (!geoInfo.isWGS84 && geoInfo.proj4String === null) {
+      return
+    }
+
     setLoading(true)
     setError(null)
 
