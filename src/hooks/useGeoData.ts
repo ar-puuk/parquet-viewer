@@ -144,14 +144,18 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
             // (nested JS array/object). A JSON round-trip strips any Arrow
             // proxy wrappers and gives us plain {x, y} objects that
             // geoArrowToGeometry can consume.
-            if (raw == null) continue
+            if (raw == null) { console.warn('[geo-debug] raw is null, skipping row'); continue }
             const structDepth = (geo.structType ?? '').match(/\[\]/g)?.length ?? 0
+            console.log('[geo-debug] raw type:', typeof raw, '| constructor:', (raw as object)?.constructor?.name, '| depth:', structDepth, '| value:', raw)
             try {
-              const structData = JSON.parse(JSON.stringify(raw))
+              const serialised = JSON.stringify(raw)
+              console.log('[geo-debug] JSON.stringify result:', serialised?.slice(0, 200))
+              const structData = JSON.parse(serialised)
               const converted = geoArrowToGeometry(structData, structDepth)
+              console.log('[geo-debug] converted geometry:', converted ? converted.type : 'null')
               if (!converted) continue
               geojson = JSON.stringify(converted)
-            } catch { continue }
+            } catch (err) { console.error('[geo-debug] conversion error:', err); continue }
           } else {
             // ST_AsGeoJSON returns a GeoJSON string; DuckDB may also hand back
             // a pre-parsed object via Arrow — normalise either way.
