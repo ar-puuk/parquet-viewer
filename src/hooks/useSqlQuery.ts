@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { queryDBWithColumns } from './useDuckDB'
 import { useAppStore } from '../store/useAppStore'
+import { classifyError } from '../utils/classifyError'
 
 export function useSqlQuery() {
   const setQueryResult = useAppStore((s) => s.setQueryResult)
@@ -30,7 +31,7 @@ export function useSqlQuery() {
         const executionMs = Math.round(performance.now() - start)
         setQueryResult({ rows, columns, sql: trimmed, executionMs })
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setError(classifyError(e))
       }
     } finally {
       setIsRunning(false)
