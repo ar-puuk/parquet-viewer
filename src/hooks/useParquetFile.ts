@@ -7,7 +7,16 @@ import { detectGeo, ensureSpatialExtension, coordinatesLookGeographic } from '..
 import { classifyError } from '../utils/classifyError'
 import type { ColumnInfo, FileStats } from '../types'
 
-const REGISTERED_NAME = 'data.parquet'
+// Each file load gets a unique registration name so DuckDB's internal buffer-pool
+// cache — keyed by (filename, page-offset) — never serves pages from a previous
+// file.  Stale cache hits across same-named registrations were the root cause of
+// spurious codec errors (e.g. ZSTD) when loading a second file in the same session.
+let fileSeq = 0
+let prevRegisteredName: string | null = null
+
+function nextRegisteredName(): string {
+  return `data_${++fileSeq}.parquet`
+}
 
 /**
  * After recreating the view with the spatial extension loaded, check the actual
@@ -35,7 +44,6 @@ async function resolveGeoEncoding(geoInfo: import('../types').GeoInfo): Promise<
   return geoInfo
 }
 
-
 async function extractSchema(): Promise<ColumnInfo[]> {
   const descRows = await queryDB('SELECT column_name, column_type, "null" FROM (DESCRIBE data)')
 
@@ -58,7 +66,7 @@ async function extractSchema(): Promise<ColumnInfo[]> {
   }))
 }
 
-async function extractFileStats(fileSizeBytes: number | null): Promise<FileStats> {
+async function extractFileStats(fileSizeBytes: number | null, registeredName: string): Promise<FileStats> {
   // Row count via SELECT COUNT(*) — DuckDB reads only parquet footer for this
   const countRows = await queryDB('SELECT COUNT(*) AS cnt FROM data')
   const rowCount = Number(countRows[0]?.['cnt'] ?? 0)
@@ -73,7 +81,7 @@ async function extractFileStats(fileSizeBytes: number | null): Promise<FileStats
   let formatVersion: number | null = null
   try {
     const metaRows = await queryDB(
-      `SELECT created_by, num_row_groups, format_version FROM parquet_file_metadata('${REGISTERED_NAME}') LIMIT 1`
+      `SELECT created_by, num_row_groups, format_version FROM parquet_file_metadata('${registeredName}') LIMIT 1`
     )
     if (metaRows[0]) {
       createdBy = String(metaRows[0]['created_by'] ?? '').trim() || null
@@ -85,6 +93,14 @@ async function extractFileStats(fileSizeBytes: number | null): Promise<FileStats
   }
 
   return { rowCount, columnCount, fileSizeBytes, createdBy, rowGroupCount, formatVersion }
+}
+
+/** Drop the previous file registration from DuckDB's VFS (best-effort). */
+async function dropPrevFile(db: duckdb.AsyncDuckDB, conn: duckdb.AsyncDuckDBConnection) {
+  await conn.query('DROP VIEW IF EXISTS data')
+  if (prevRegisteredName) {
+    try { await db.dropFile(prevRegisteredName) } catch { /* may not exist */ }
+  }
 }
 
 export function useParquetFile() {
@@ -100,29 +116,26 @@ export function useParquetFile() {
       const conn = getConnection()
       if (!db || !conn) throw new Error('DuckDB is not ready yet')
 
-      // Drop the view and unregister the previous file before loading a new one.
-      // DuckDB-WASM caches row-group metadata internally keyed by filename; without
-      // this, re-registering 'data.parquet' with different content can cause reads
-      // against stale cached data from the previous file (e.g. wrong codec errors).
-      await conn.query('DROP VIEW IF EXISTS data')
-      try { await db.dropFile(REGISTERED_NAME) } catch { /* file may not exist yet */ }
+      await dropPrevFile(db, conn)
+      const registeredName = nextRegisteredName()
+      prevRegisteredName = registeredName
 
       const buffer = await file.arrayBuffer()
-      await db.registerFileBuffer(REGISTERED_NAME, new Uint8Array(buffer))
-      await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
+      await db.registerFileBuffer(registeredName, new Uint8Array(buffer))
+      await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${registeredName}')`)
 
       const [schema, stats] = await Promise.all([
         extractSchema(),
-        extractFileStats(file.size),
+        extractFileStats(file.size, registeredName),
       ])
 
-      let geoInfo = await detectGeo(schema)
+      let geoInfo = await detectGeo(schema, registeredName)
       let finalSchema = schema
       if (geoInfo) {
         await ensureSpatialExtension()
         // Recreate the view with the spatial extension active so DuckDB resolves
         // GeoArrow struct columns and WKB blobs to its native GEOMETRY type.
-        await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
+        await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${registeredName}')`)
         geoInfo = await resolveGeoEncoding(geoInfo)
         // Re-extract schema: the spatial extension may change column types (e.g. BLOB → GEOMETRY).
         finalSchema = await extractSchema()
@@ -138,7 +151,7 @@ export function useParquetFile() {
       setSchema(finalSchema)
       setFileStats(stats)
       setGeoInfo(geoInfo)
-      setActiveFile({ name: file.name, type: 'local', registeredAs: REGISTERED_NAME, fileSizeBytes: file.size })
+      setActiveFile({ name: file.name, type: 'local', registeredAs: registeredName, fileSizeBytes: file.size })
     } catch (e) {
       setError(classifyError(e))
     } finally {
@@ -154,31 +167,31 @@ export function useParquetFile() {
       const conn = getConnection()
       if (!db || !conn) throw new Error('DuckDB is not ready yet')
 
-      // Same cache-busting as loadFile: drop view and unregister previous file.
-      await conn.query('DROP VIEW IF EXISTS data')
-      try { await db.dropFile(REGISTERED_NAME) } catch { /* file may not exist yet */ }
+      await dropPrevFile(db, conn)
+      const registeredName = nextRegisteredName()
+      prevRegisteredName = registeredName
 
       const url = normalizeUrl(rawUrl)
       await db.registerFileURL(
-        REGISTERED_NAME,
+        registeredName,
         url,
         duckdb.DuckDBDataProtocol.HTTP,
         false
       )
-      await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
+      await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${registeredName}')`)
 
       const fileName = url.split('/').pop() ?? url
 
       const [schema, stats] = await Promise.all([
         extractSchema(),
-        extractFileStats(null),
+        extractFileStats(null, registeredName),
       ])
 
-      let geoInfo = await detectGeo(schema)
+      let geoInfo = await detectGeo(schema, registeredName)
       let finalSchema = schema
       if (geoInfo) {
         await ensureSpatialExtension()
-        await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
+        await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${registeredName}')`)
         geoInfo = await resolveGeoEncoding(geoInfo)
         finalSchema = await extractSchema()
         if (geoInfo.isWGS84) {
@@ -190,7 +203,7 @@ export function useParquetFile() {
       setSchema(finalSchema)
       setFileStats(stats)
       setGeoInfo(geoInfo)
-      setActiveFile({ name: fileName, type: 'url', registeredAs: REGISTERED_NAME, fileSizeBytes: null })
+      setActiveFile({ name: fileName, type: 'url', registeredAs: registeredName, fileSizeBytes: null })
     } catch (e) {
       setError(classifyError(e))
     } finally {

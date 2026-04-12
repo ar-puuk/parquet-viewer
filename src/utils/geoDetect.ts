@@ -1,8 +1,6 @@
 import { queryDB } from '../hooks/useDuckDB'
 import type { ColumnInfo, GeoInfo } from '../types'
 
-const REGISTERED_NAME = 'data.parquet'
-
 // Known geometry column names for Tier 2 heuristic detection
 const GEO_COLUMN_NAMES = new Set(['geometry', 'geom', 'wkb_geometry', 'shape'])
 const WKT_COLUMN_NAMES = new Set(['wkt'])
@@ -28,12 +26,12 @@ export async function ensureSpatialExtension(): Promise<void> {
  * Tier 1: parquet key-value metadata `geo` key (GeoParquet spec).
  * Tier 2: column name / type heuristics.
  */
-export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
+export async function detectGeo(schema: ColumnInfo[], registeredName: string): Promise<GeoInfo | null> {
   // ── Tier 1: GeoParquet spec metadata ──────────────────────────────────────
   try {
     const rows = await queryDB(
       `SELECT decode(value) AS geo_meta
-       FROM parquet_kv_metadata('${REGISTERED_NAME}')
+       FROM parquet_kv_metadata('${registeredName}')
        WHERE decode(key) = 'geo'
        LIMIT 1`
     )
