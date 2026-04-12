@@ -214,6 +214,8 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const mapNN = map!  // non-null alias for use inside rAF closures where TS loses narrowing
     let rafId: number
 
     function pushData() {
@@ -224,7 +226,7 @@ export function MapView({ features, initialBbox, onFeatureClick }: Props) {
       // theoretically be null if the component unmounts between scheduling the
       // rAF and its execution, even though the cleanup cancels the rAF.
       rafId = requestAnimationFrame(() => {
-        const src = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+        const src = mapNN.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
         console.log('[map-debug] pushData rAF | src:', !!src, '| features:', geojson.features.length, '| first geom:', geojson.features[0]?.geometry?.type, geojson.features[0]?.geometry?.type === 'Polygon' ? (geojson.features[0].geometry as GeoJSON.Polygon).coordinates[0][0] : '')
         if (src) src.setData(geojson)
       })
