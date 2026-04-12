@@ -3,7 +3,7 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import { queryDB, queryDBWithColumns, getDBInstance, getConnection } from './useDuckDB'
 import { normalizeUrl } from '../utils/s3url'
 import { useAppStore } from '../store/useAppStore'
-import { detectGeo, ensureSpatialExtension } from '../utils/geoDetect'
+import { detectGeo, ensureSpatialExtension, coordinatesLookGeographic } from '../utils/geoDetect'
 import type { ColumnInfo, FileStats } from '../types'
 
 const REGISTERED_NAME = 'data.parquet'
@@ -149,6 +149,13 @@ export function useParquetFile() {
         geoInfo = await resolveGeoEncoding(geoInfo)
         // Re-extract schema: the spatial extension may change column types (e.g. BLOB → GEOMETRY).
         finalSchema = await extractSchema()
+        // If no CRS metadata was found (Tier 2 detection assumed WGS84), sample a few
+        // coordinate values to check whether they actually look geographic. Projected
+        // coordinates (e.g. UTM in metres) far exceed the WGS84 degree range.
+        if (geoInfo.isWGS84) {
+          const looksGeo = await coordinatesLookGeographic(geoInfo)
+          if (!looksGeo) geoInfo = { ...geoInfo, isWGS84: false }
+        }
       }
 
       setSchema(finalSchema)
@@ -193,6 +200,10 @@ export function useParquetFile() {
         await conn.query(`CREATE OR REPLACE VIEW data AS SELECT * FROM read_parquet('${REGISTERED_NAME}')`)
         geoInfo = await resolveGeoEncoding(geoInfo)
         finalSchema = await extractSchema()
+        if (geoInfo.isWGS84) {
+          const looksGeo = await coordinatesLookGeographic(geoInfo)
+          if (!looksGeo) geoInfo = { ...geoInfo, isWGS84: false }
+        }
       }
 
       setSchema(finalSchema)

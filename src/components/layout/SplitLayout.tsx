@@ -4,10 +4,9 @@ import { useAppStore } from '../../store/useAppStore'
 interface Props {
   mapSlot: React.ReactNode
   tableSlot: React.ReactNode
-  crsWarning?: string | null
 }
 
-export function SplitLayout({ mapSlot, tableSlot, crsWarning }: Props) {
+export function SplitLayout({ mapSlot, tableSlot }: Props) {
   const splitRatio = useAppStore((s) => s.splitRatio)
   const setSplitRatio = useAppStore((s) => s.setSplitRatio)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -54,13 +53,6 @@ export function SplitLayout({ mapSlot, tableSlot, crsWarning }: Props) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative" ref={containerRef}>
-      {/* CRS warning banner */}
-      {crsWarning && (
-        <div className="flex-shrink-0 px-3 py-1.5 bg-amber-50 dark:bg-amber-950 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
-          <span className="font-semibold">CRS warning:</span> {crsWarning}. Coordinates may not align with base map tiles (WGS84 expected).
-        </div>
-      )}
-
       {/* Collapse preset buttons */}
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex gap-1">
         {presets.map((p) => (

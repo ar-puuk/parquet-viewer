@@ -142,3 +142,106 @@ export async function detectGeo(schema: ColumnInfo[]): Promise<GeoInfo | null> {
 
   return null
 }
+
+// ── Coordinate range check ─────────────────────────────────────────────────────
+
+/**
+ * Sample up to 5 non-null rows and inspect the first coordinate pair.
+ * Returns false when any coordinate is clearly outside the WGS84 range
+ * (|x| > 180 or |y| > 90 by a wide margin), indicating a projected CRS.
+ *
+ * Returns true (geographic) on any error so we never emit false-positive
+ * warnings. Must be called after ensureSpatialExtension() has loaded.
+ */
+export async function coordinatesLookGeographic(geoInfo: GeoInfo): Promise<boolean> {
+  const col = `"${geoInfo.geometryColumn}"`
+
+  try {
+    if (geoInfo.encoding === 'struct') {
+      // GeoArrow struct — access x/y fields directly without ST_* functions
+      const depth = (geoInfo.structType ?? '').match(/\[\]/g)?.length ?? 0
+      let xExpr: string
+      let yExpr: string
+      let whereExtra = ''
+
+      if (depth === 0) {
+        xExpr = `${col}.x`
+        yExpr = `${col}.y`
+      } else if (depth === 1) {
+        xExpr = `${col}[1].x`
+        yExpr = `${col}[1].y`
+        whereExtra = ` AND len(${col}) > 0`
+      } else {
+        xExpr = `${col}[1][1].x`
+        yExpr = `${col}[1][1].y`
+        whereExtra = ` AND len(${col}) > 0 AND len(${col}[1]) > 0`
+      }
+
+      const rows = await queryDB(
+        `SELECT ${xExpr} AS x, ${yExpr} AS y
+         FROM data
+         WHERE ${col} IS NOT NULL${whereExtra}
+         LIMIT 5`
+      )
+      for (const row of rows) {
+        const x = Number(row['x'])
+        const y = Number(row['y'])
+        if (isFinite(x) && isFinite(y) && (Math.abs(x) > 180 || Math.abs(y) > 90)) return false
+      }
+      return true
+    } else {
+      // wkb / wkt / native — convert to GeoJSON and parse first coordinate
+      let geomExpr: string
+      if (geoInfo.encoding === 'wkb') {
+        geomExpr = `ST_GeomFromWKB(${col})`
+      } else if (geoInfo.encoding === 'wkt') {
+        geomExpr = `ST_GeomFromText(${col})`
+      } else {
+        // native GEOMETRY
+        geomExpr = col
+      }
+
+      const rows = await queryDB(
+        `SELECT ST_AsGeoJSON(${geomExpr}) AS g
+         FROM data
+         WHERE ${col} IS NOT NULL
+         LIMIT 5`
+      )
+      for (const row of rows) {
+        const raw = row['g']
+        if (!raw) continue
+        const geom = JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw)) as Record<string, unknown>
+        const coord = firstCoordFromGeojson(geom)
+        if (!coord) continue
+        const [x, y] = coord
+        if (isFinite(x) && isFinite(y) && (Math.abs(x) > 180 || Math.abs(y) > 90)) return false
+      }
+      return true
+    }
+  } catch {
+    // Fail-safe: on any error assume geographic so we don't warn unnecessarily
+    return true
+  }
+}
+
+function firstCoordFromGeojson(geom: Record<string, unknown>): [number, number] | null {
+  if (!geom || !geom.type) return null
+  switch (geom.type as string) {
+    case 'Point':
+      return geom.coordinates as [number, number]
+    case 'MultiPoint':
+    case 'LineString':
+      return ((geom.coordinates as [number, number][])[0]) ?? null
+    case 'MultiLineString':
+    case 'Polygon':
+      return ((geom.coordinates as [number, number][][])[0])?.[0] ?? null
+    case 'MultiPolygon':
+      return (((geom.coordinates as [number, number][][][])[0])?.[0])?.[0] ?? null
+    case 'GeometryCollection': {
+      const geoms = geom.geometries as Array<Record<string, unknown>>
+      return geoms.length > 0 ? firstCoordFromGeojson(geoms[0]) : null
+    }
+    default:
+      return null
+  }
+}
