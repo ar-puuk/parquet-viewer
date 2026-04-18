@@ -165,9 +165,11 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
           } else if (geo.encoding === 'esri') {
             // Esri JSON geometry — stored as a VARCHAR string or a STRUCT.
             // JSON round-trip normalises Arrow proxy objects to plain JS objects.
+            // Also normalise Python-dict single-quoted keys to double quotes.
             if (raw == null) continue
             try {
-              const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
+              const rawStr = typeof raw === 'string' ? raw : JSON.stringify(raw)
+              const str = rawStr.replace(/'/g, '"')
               const esriData = JSON.parse(str) as Record<string, unknown>
               const converted = esriToGeoJSON(esriData)
               if (!converted) continue

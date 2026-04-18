@@ -48,9 +48,13 @@ async function looksLikeEsriJson(colName: string): Promise<boolean> {
     const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
     const trimmed = str.trim()
     if (!trimmed.startsWith('{')) return false
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>
-    return 'rings' in parsed || 'paths' in parsed || 'points' in parsed ||
-           ('x' in parsed && 'y' in parsed && 'spatialReference' in parsed)
+    // Use string-based detection to handle both valid JSON and Python-dict-format
+    // strings (single-quoted keys) produced by Esri tools.
+    return trimmed.includes("'rings'") || trimmed.includes('"rings"') ||
+           trimmed.includes("'paths'") || trimmed.includes('"paths"') ||
+           trimmed.includes("'points'") || trimmed.includes('"points"') ||
+           ((trimmed.includes("'x'") || trimmed.includes('"x"')) &&
+            (trimmed.includes("'spatialReference'") || trimmed.includes('"spatialReference"')))
   } catch {
     return false
   }
@@ -67,7 +71,11 @@ async function extractEsriEpsg(colName: string): Promise<number | null> {
     const raw = rows[0]?.['v']
     if (raw == null) return null
     const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
-    const parsed = JSON.parse(str) as Record<string, unknown>
+    // Normalise Python-dict single-quoted keys to double quotes before parsing.
+    // Safe because Esri geometry JSON values are all numbers — no string values
+    // that could contain apostrophes.
+    const jsonStr = str.replace(/'/g, '"')
+    const parsed = JSON.parse(jsonStr) as Record<string, unknown>
     const sr = parsed['spatialReference'] as Record<string, unknown> | undefined
     const wkid = sr?.['wkid'] ?? sr?.['latestWkid']
     return wkid != null ? Number(wkid) : null
