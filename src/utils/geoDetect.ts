@@ -21,10 +21,65 @@ export async function ensureSpatialExtension(): Promise<void> {
   }
 }
 
+// ── Esri JSON helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Return true if the STRUCT type string looks like an Esri JSON geometry
+ * (has a 'rings', 'paths', or 'points' field rather than GeoArrow x/y fields).
+ */
+function isEsriJsonStructType(structType: string): boolean {
+  const lower = structType.toLowerCase()
+  return lower.startsWith('struct(') && (
+    lower.includes('rings') || lower.includes('paths') || lower.includes('points')
+  )
+}
+
+/**
+ * Sample one row of a VARCHAR column and check whether it looks like an Esri
+ * JSON geometry object (starts with '{' and has rings/paths/points/x+y keys).
+ * Returns false on any error so we fall back to treating it as WKT.
+ */
+async function looksLikeEsriJson(colName: string): Promise<boolean> {
+  try {
+    const col = `"${colName.replace(/"/g, '""')}"`
+    const rows = await queryDB(`SELECT ${col} AS v FROM data WHERE ${col} IS NOT NULL LIMIT 1`)
+    const raw = rows[0]?.['v']
+    if (raw == null) return false
+    const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
+    const trimmed = str.trim()
+    if (!trimmed.startsWith('{')) return false
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    return 'rings' in parsed || 'paths' in parsed || 'points' in parsed ||
+           ('x' in parsed && 'y' in parsed && 'spatialReference' in parsed)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Try to read the EPSG code from a sampled Esri JSON geometry's
+ * spatialReference.wkid field. Works for both VARCHAR and STRUCT columns.
+ */
+async function extractEsriEpsg(colName: string): Promise<number | null> {
+  try {
+    const col = `"${colName.replace(/"/g, '""')}"`
+    const rows = await queryDB(`SELECT ${col} AS v FROM data WHERE ${col} IS NOT NULL LIMIT 1`)
+    const raw = rows[0]?.['v']
+    if (raw == null) return null
+    const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
+    const parsed = JSON.parse(str) as Record<string, unknown>
+    const sr = parsed['spatialReference'] as Record<string, unknown> | undefined
+    const wkid = sr?.['wkid'] ?? sr?.['latestWkid']
+    return wkid != null ? Number(wkid) : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Detect whether the loaded parquet file contains geometry.
  * Tier 1: parquet key-value metadata `geo` key (GeoParquet spec).
- * Tier 2: column name / type heuristics.
+ * Tier 2: column name / type heuristics (including Esri JSON detection).
  */
 export async function detectGeo(schema: ColumnInfo[], registeredName: string): Promise<GeoInfo | null> {
   // ── Tier 1: GeoParquet spec metadata ──────────────────────────────────────
@@ -90,16 +145,26 @@ export async function detectGeo(schema: ColumnInfo[], registeredName: string): P
       return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
 
-    // GeoArrow struct aliases (POINT_2D = STRUCT(x,y), POLYGON_2D = STRUCT(x,y)[][], etc.)
+    // STRUCT columns — distinguish GeoArrow (x/y fields) from Esri JSON (rings/paths)
     if (
       upperType === 'STRUCT' &&
       (GEO_COLUMN_NAMES.has(lower) || lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))
     ) {
+      if (isEsriJsonStructType(col.type)) {
+        const epsg = await extractEsriEpsg(col.name)
+        const isWGS84 = epsg == null || epsg === 4326
+        return { geometryColumn: col.name, encoding: 'esri', crsString: null, isWGS84, bbox: null, epsg, proj4String: null }
+      }
       return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
 
-    // WKT: VARCHAR columns with known WKT names, or geo-named VARCHAR columns
+    // VARCHAR — could be WKT or Esri JSON; sample a row to tell them apart
     if ((WKT_COLUMN_NAMES.has(lower) || GEO_COLUMN_NAMES.has(lower)) && upperType === 'VARCHAR') {
+      if (await looksLikeEsriJson(col.name)) {
+        const epsg = await extractEsriEpsg(col.name)
+        const isWGS84 = epsg == null || epsg === 4326
+        return { geometryColumn: col.name, encoding: 'esri', crsString: null, isWGS84, bbox: null, epsg, proj4String: null }
+      }
       return { geometryColumn: col.name, encoding: 'wkt', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
 
@@ -117,6 +182,11 @@ export async function detectGeo(schema: ColumnInfo[], registeredName: string): P
       return { geometryColumn: col.name, encoding: 'native', crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
     if (upperType === 'STRUCT' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
+      if (isEsriJsonStructType(col.type)) {
+        const epsg = await extractEsriEpsg(col.name)
+        const isWGS84 = epsg == null || epsg === 4326
+        return { geometryColumn: col.name, encoding: 'esri', crsString: null, isWGS84, bbox: null, epsg, proj4String: null }
+      }
       return { geometryColumn: col.name, encoding: 'struct', structType: col.type, crsString: null, isWGS84: true, bbox: null, epsg: null, proj4String: null }
     }
     if (upperType === 'BLOB' && (lower.includes('geo') || lower.includes('geom') || lower.includes('wkb'))) {
@@ -124,11 +194,21 @@ export async function detectGeo(schema: ColumnInfo[], registeredName: string): P
     }
   }
 
-  // Final fallback: exact name match regardless of type (covers unusual DuckDB type names)
+  // Final fallback: exact name match regardless of type
   for (const col of schema) {
     const lower = col.name.toLowerCase()
     const upperType = col.type.split('(')[0].toUpperCase().trim()
     if (GEO_COLUMN_NAMES.has(lower)) {
+      if (upperType === 'VARCHAR' && await looksLikeEsriJson(col.name)) {
+        const epsg = await extractEsriEpsg(col.name)
+        const isWGS84 = epsg == null || epsg === 4326
+        return { geometryColumn: col.name, encoding: 'esri', crsString: null, isWGS84, bbox: null, epsg, proj4String: null }
+      }
+      if (upperType === 'STRUCT' && isEsriJsonStructType(col.type)) {
+        const epsg = await extractEsriEpsg(col.name)
+        const isWGS84 = epsg == null || epsg === 4326
+        return { geometryColumn: col.name, encoding: 'esri', crsString: null, isWGS84, bbox: null, epsg, proj4String: null }
+      }
       const encoding =
         upperType === 'VARCHAR' ? 'wkt' :
         upperType === 'GEOMETRY' ? 'native' :
@@ -155,6 +235,12 @@ export async function coordinatesLookGeographic(geoInfo: GeoInfo): Promise<boole
   const col = `"${geoInfo.geometryColumn}"`
 
   try {
+    if (geoInfo.encoding === 'esri') {
+      // EPSG was already extracted from spatialReference.wkid during detection;
+      // no need to sample coordinates — isWGS84 is already set correctly.
+      return geoInfo.isWGS84
+    }
+
     if (geoInfo.encoding === 'struct') {
       // GeoArrow struct — access x/y fields directly without ST_* functions
       const depth = (geoInfo.structType ?? '').match(/\[\]/g)?.length ?? 0

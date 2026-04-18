@@ -75,12 +75,10 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
       // DuckDB GEOMETRY type or a GeoArrow alias (POLYGON_2D etc.) that DuckDB
       // resolved to its native type after loading the spatial extension.
       geoExpr = `ST_AsGeoJSON(${col}::GEOMETRY)`
-    } else if (geo.encoding === 'struct') {
-      // Physical GeoArrow struct type (STRUCT(x DOUBLE, y DOUBLE)[][] etc.).
+    } else if (geo.encoding === 'struct' || geo.encoding === 'esri') {
+      // GeoArrow physical struct or Esri JSON (VARCHAR/STRUCT).
       // Select the raw column — DuckDB WASM returns it as a nested JS object
-      // via Arrow. We convert the {x,y} coordinate objects to GeoJSON on the
-      // client side. to_json() is avoided because the spatial extension may
-      // override it to return null for unrecognised struct geometry types.
+      // via Arrow. We convert to GeoJSON on the client side.
       geoExpr = col
     } else {
       const geomExpr = geo.encoding === 'wkt'
@@ -164,6 +162,17 @@ export function useGeoData(geoInfo: GeoInfo | null): GeoDataResult {
               if (!converted) continue
               geojson = JSON.stringify(converted)
             } catch (err) { console.error('[geo-debug] conversion error:', err); continue }
+          } else if (geo.encoding === 'esri') {
+            // Esri JSON geometry — stored as a VARCHAR string or a STRUCT.
+            // JSON round-trip normalises Arrow proxy objects to plain JS objects.
+            if (raw == null) continue
+            try {
+              const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
+              const esriData = JSON.parse(str) as Record<string, unknown>
+              const converted = esriToGeoJSON(esriData)
+              if (!converted) continue
+              geojson = JSON.stringify(converted)
+            } catch { continue }
           } else {
             // ST_AsGeoJSON returns a GeoJSON string; DuckDB may also hand back
             // a pre-parsed object via Arrow — normalise either way.
@@ -264,6 +273,36 @@ function reprojectGeom(
     default:
       return geom
   }
+}
+
+// ── Esri JSON → GeoJSON ──────────────────────────────────────────────────────
+
+/**
+ * Convert an Esri JSON geometry object to a GeoJSON Geometry.
+ * Handles polygons (rings), polylines (paths), multipoints (points), and
+ * points (x/y). Coordinate arrays are already in [x, y] order so they map
+ * directly to GeoJSON without transformation.
+ */
+function esriToGeoJSON(esri: Record<string, unknown>): GeoJSON.Geometry | null {
+  if (Array.isArray(esri['rings'])) {
+    const rings = esri['rings'] as number[][][]
+    // A single-ring Esri polygon maps directly to a GeoJSON Polygon.
+    // Multi-ring cases are also represented as a Polygon (first ring = exterior,
+    // remaining rings = holes) which matches the Esri convention.
+    return { type: 'Polygon', coordinates: rings }
+  }
+  if (Array.isArray(esri['paths'])) {
+    const paths = esri['paths'] as number[][][]
+    if (paths.length === 1) return { type: 'LineString', coordinates: paths[0] }
+    return { type: 'MultiLineString', coordinates: paths }
+  }
+  if (Array.isArray(esri['points'])) {
+    return { type: 'MultiPoint', coordinates: esri['points'] as number[][] }
+  }
+  if (esri['x'] !== undefined && esri['y'] !== undefined) {
+    return { type: 'Point', coordinates: [Number(esri['x']), Number(esri['y'])] }
+  }
+  return null
 }
 
 // ── GeoArrow struct → GeoJSON ─────────────────────────────────────────────────

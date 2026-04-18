@@ -31,7 +31,7 @@ export interface GeoInfo {
    *          DuckDB has no cast to GEOMETRY for these; WKT is built via
    *          list_transform + list_aggregate, then ST_GeomFromText is used
    */
-  encoding: 'wkb' | 'wkt' | 'native' | 'struct'
+  encoding: 'wkb' | 'wkt' | 'native' | 'struct' | 'esri'
   /**
    * Raw DuckDB column type for 'struct' encoding (e.g. STRUCT(x DOUBLE, y DOUBLE)[][]).
    * Used to derive nesting depth → geometry type for WKT construction.
