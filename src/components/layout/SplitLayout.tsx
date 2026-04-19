@@ -12,7 +12,6 @@ export function SplitLayout({ mapSlot, tableSlot }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
 
-  // Map panel: splitRatio % of container height
   const mapPct = Math.min(100, Math.max(0, splitRatio))
   const tablePct = 100 - mapPct
 
@@ -37,14 +36,12 @@ export function SplitLayout({ mapSlot, tableSlot }: Props) {
     document.addEventListener('mouseup', handleUp)
   }, [setSplitRatio])
 
-  // Preset buttons
   const presets = [
     { label: 'Map only', ratio: 100 },
     { label: '65 / 35', ratio: 65 },
     { label: 'Table only', ratio: 0 },
   ]
 
-  // Suppress touch-scroll while dragging
   useEffect(() => {
     const prevent = (e: TouchEvent) => { if (isDragging.current) e.preventDefault() }
     document.addEventListener('touchmove', prevent, { passive: false })
@@ -53,16 +50,16 @@ export function SplitLayout({ mapSlot, tableSlot }: Props) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative" ref={containerRef}>
-      {/* Collapse preset buttons */}
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex gap-1">
+      {/* Preset toolbar — floating pill */}
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex gap-0.5 p-1 bg-white/90 dark:bg-[#131e28]/90 backdrop-blur-sm rounded-lg border border-[#d4c5a9]/60 dark:border-[#253545] shadow-[0_2px_8px_rgba(0,0,0,0.10)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
         {presets.map((p) => (
           <button
             key={p.label}
             onClick={() => setSplitRatio(p.ratio)}
-            className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
+            className={`px-2.5 py-1 text-[10px] font-medium rounded-md border transition-colors duration-150 ${
               splitRatio === p.ratio
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-indigo-400'
+                ? 'bg-[#b45309] dark:bg-[#fbbf24] text-white dark:text-[#1c1208] border-[#b45309] dark:border-[#fbbf24]'
+                : 'bg-transparent text-[#6b5e4a] dark:text-[#8a98a8] border-transparent hover:bg-[#f2ece0] dark:hover:bg-[#253545] hover:text-[#1c1208] dark:hover:text-[#f0ebe0]'
             }`}
           >
             {p.label}
@@ -77,13 +74,19 @@ export function SplitLayout({ mapSlot, tableSlot }: Props) {
         </div>
       )}
 
-      {/* Drag handle — only show when both panels are visible */}
+      {/* Drag handle */}
       {mapPct > 0 && tablePct > 0 && (
         <div
           onMouseDown={startDrag}
-          className="flex-shrink-0 h-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-indigo-400 dark:hover:bg-indigo-600 cursor-row-resize transition-colors z-10"
+          className="group flex-shrink-0 h-[5px] bg-[#d4c5a9] dark:bg-[#253545] hover:bg-[#b45309] dark:hover:bg-[#fbbf24] cursor-row-resize transition-colors duration-150 z-10 relative"
           title="Drag to resize"
-        />
+        >
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="w-1 h-1 rounded-full bg-white dark:bg-[#1c1208]" />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Table panel */}

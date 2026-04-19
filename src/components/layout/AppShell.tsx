@@ -9,7 +9,7 @@ const GitHubIcon = () => (
 )
 
 const SunIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
     <circle cx="12" cy="12" r="5" />
     <line x1="12" y1="1" x2="12" y2="3" />
     <line x1="12" y1="21" x2="12" y2="23" />
@@ -23,13 +23,13 @@ const SunIcon = () => (
 )
 
 const MoonIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
   </svg>
 )
 
 const SystemIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
     <rect x="2" y="3" width="20" height="14" rx="2" />
     <line x1="8" y1="21" x2="16" y2="21" />
     <line x1="12" y1="17" x2="12" y2="21" />
@@ -50,25 +50,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const themeLabel = theme === 'light' ? 'Light' : theme === 'dark' ? 'Dark' : 'System'
 
   return (
-    <div className="h-screen overflow-hidden bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
-      <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 z-10 flex-shrink-0">
-        <div className="max-w-screen-2xl mx-auto px-4 h-12 flex items-center justify-between">
+    <div className="h-screen overflow-hidden bg-[#fffbf2] dark:bg-[#0e171e] text-[#1c1208] dark:text-[#f0ebe0] flex flex-col">
+      <header className="flex-shrink-0 z-10 bg-white dark:bg-[#131e28] border-b border-[#d4c5a9] dark:border-[#253545] shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.4)]">
+        <div className="px-4 h-11 flex items-center justify-between">
           <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <svg viewBox="0 0 32 32" className="w-7 h-7" fill="none">
-              <rect width="32" height="32" rx="6" fill="#6366f1" />
+              <rect width="32" height="32" rx="6" fill="#b45309" className="dark:fill-[#fbbf24]" />
               <path d="M8 10h6a4 4 0 0 1 0 8H8V10z" fill="white" />
               <rect x="8" y="20" width="4" height="2" rx="1" fill="white" />
               <rect x="16" y="20" width="8" height="2" rx="1" fill="white" />
               <rect x="16" y="14" width="8" height="2" rx="1" fill="white" />
             </svg>
-            <span className="font-semibold text-sm tracking-tight">Parquet Explorer</span>
+            <span className="font-semibold text-sm tracking-tight text-[#1c1208] dark:text-[#f0ebe0] select-none">
+              Parquet Explorer
+            </span>
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={cycleTheme}
               title={`Theme: ${themeLabel} (click to cycle)`}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-[#6b5e4a] dark:text-[#8a98a8] hover:bg-[#f2ece0] dark:hover:bg-[#253545] hover:text-[#1c1208] dark:hover:text-[#f0ebe0] transition-colors duration-150"
             >
               <ThemeIcon />
               <span className="hidden sm:inline">{themeLabel}</span>
@@ -79,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               target="_blank"
               rel="noopener noreferrer"
               title="View on GitHub"
-              className="p-1.5 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="p-1.5 rounded-md text-[#6b5e4a] dark:text-[#8a98a8] hover:bg-[#f2ece0] dark:hover:bg-[#253545] hover:text-[#1c1208] dark:hover:text-[#f0ebe0] transition-colors duration-150"
             >
               <GitHubIcon />
             </a>
@@ -87,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+      <main className="flex-1 flex flex-col overflow-hidden bg-[#fffbf2] dark:bg-[#0e171e]">{children}</main>
     </div>
   )
 }

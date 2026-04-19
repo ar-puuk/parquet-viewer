@@ -70,8 +70,7 @@ export function SqlPanel() {
     window.addEventListener('mouseup', onMouseUp)
   }, [panelWidth])
 
-  // Builder gets its own snapshot of SQL on every tab switch to 'builder'
-  const [builderKey, setBuilderKey]         = useState(0)
+  const [builderKey, setBuilderKey]               = useState(0)
   const [builderInitialSql, setBuilderInitialSql] = useState(sql)
 
   const autoRanRef             = useRef(false)
@@ -79,7 +78,6 @@ export function SqlPanel() {
   const historyIndexRef        = useRef<number>(-1)
   const pendingVisibleColsRef  = useRef<string[] | null>(null)
 
-  // When a new file is loaded reset state and auto-run default query
   useEffect(() => {
     if (!schema) return
     const fresh = buildDefaultSql(schema)
@@ -108,7 +106,6 @@ export function SqlPanel() {
   const handleRun = useCallback(() => {
     if (!sql.trim() || isRunning) return
     clearError()
-    // Apply column visibility: builder selection on builder tab, reset on SQL tab.
     setVisibleColumns(activeTab === 'builder' ? pendingVisibleColsRef.current : null)
     const trimmed = sql.trim()
     const hist = historyRef.current.filter((q) => q !== trimmed)
@@ -143,19 +140,18 @@ export function SqlPanel() {
   // ── Collapsed icon bar ────────────────────────────────────────────────────
   if (!expanded) {
     return (
-      <aside className="flex flex-col items-center w-10 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 py-3 gap-3 flex-shrink-0">
+      <aside className="flex flex-col items-center w-10 border-r border-[#d4c5a9] dark:border-[#253545] bg-[#f2ece0] dark:bg-[#131e28] py-3 gap-3 flex-shrink-0">
         <button
           onClick={() => setExpanded(true)}
           title="Expand SQL panel"
-          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+          className="p-1 rounded hover:bg-[#d4c5a9] dark:hover:bg-[#253545] text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8] transition-colors"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
           </svg>
         </button>
-        {/* Rotated label */}
         <span
-          className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 select-none"
+          className="text-[10px] font-bold uppercase tracking-widest text-[#a8977a] dark:text-[#485868] select-none"
           style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
         >
           SQL
@@ -168,20 +164,19 @@ export function SqlPanel() {
   return (
     <aside
       style={{ width: panelWidth }}
-      className="flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col overflow-hidden relative"
+      className="flex-shrink-0 border-r border-[#d4c5a9] dark:border-[#253545] bg-white dark:bg-[#0e171e] flex flex-col overflow-hidden relative"
     >
-
       {/* Header: tabs + collapse */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
-        <div className="flex items-center gap-0.5 bg-gray-200 dark:bg-gray-700 rounded p-0.5">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#d4c5a9] dark:border-[#253545] bg-[#f8f4ec] dark:bg-[#131e28] flex-shrink-0">
+        <div className="flex items-center gap-0.5 bg-[#e8dfc8] dark:bg-[#253545] rounded-md p-0.5">
           {(['sql', 'builder'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => handleTabChange(tab)}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors capitalize ${
+              className={`px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors capitalize ${
                 activeTab === tab
-                  ? 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  ? 'bg-white dark:bg-[#192430] text-[#1c1208] dark:text-[#f0ebe0] shadow-sm'
+                  : 'text-[#6b5e4a] dark:text-[#8a98a8] hover:text-[#1c1208] dark:hover:text-[#f0ebe0]'
               }`}
             >
               {tab}
@@ -191,7 +186,7 @@ export function SqlPanel() {
         <button
           onClick={() => setExpanded(false)}
           title="Collapse SQL panel"
-          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+          className="p-1 rounded hover:bg-[#e8dfc8] dark:hover:bg-[#253545] text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8] transition-colors"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
             <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
@@ -199,7 +194,7 @@ export function SqlPanel() {
         </button>
       </div>
 
-      {/* Content: SQL editor or Builder (flex-1 so it fills remaining height) */}
+      {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'sql' ? (
           <SqlEditor
@@ -220,19 +215,19 @@ export function SqlPanel() {
             onColumnSelectionChange={(cols) => { pendingVisibleColsRef.current = cols }}
           />
         ) : (
-          <div className="h-full flex items-center justify-center text-[11px] text-gray-400 dark:text-gray-600 p-4 text-center">
+          <div className="h-full flex items-center justify-center text-[11px] text-[#a8977a] dark:text-[#485868] p-4 text-center">
             Load a file to use the query builder
           </div>
         )}
       </div>
 
       {/* Footer: run button + stats + copy */}
-      <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+      <div className="flex-shrink-0 border-t border-[#d4c5a9] dark:border-[#253545] bg-[#f8f4ec] dark:bg-[#131e28]">
         <div className="flex items-center gap-2 px-3 py-2">
           <button
             onClick={handleRun}
             disabled={isRunning || !sql.trim()}
-            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#b45309] hover:bg-[#92400e] dark:bg-[#fbbf24] dark:hover:bg-[#f59e0b] disabled:opacity-40 disabled:cursor-not-allowed text-white dark:text-[#1c1208] text-xs font-semibold rounded-md transition-colors duration-150 flex-shrink-0 shadow-sm"
           >
             {isRunning ? (
               <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
@@ -241,18 +236,18 @@ export function SqlPanel() {
               </svg>
             ) : (
               <svg viewBox="0 0 10 10" className="w-3 h-3" fill="currentColor">
-              <path d="M2 1.5 L9 5 L2 8.5 Z"/>
-            </svg>
+                <path d="M2 1.5 L9 5 L2 8.5 Z"/>
+              </svg>
             )}
             Run
           </button>
 
           {queryResult && !isRunning ? (
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+            <span className="text-[11px] font-mono tabular-nums text-[#a8977a] dark:text-[#485868] truncate">
               {queryResult.rows.length.toLocaleString()} rows · {queryResult.executionMs}ms
             </span>
           ) : (
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">
+            <span className="text-[11px] text-[#a8977a] dark:text-[#485868] select-none">
               Ctrl+Enter
             </span>
           )}
@@ -260,7 +255,7 @@ export function SqlPanel() {
           <button
             onClick={() => navigator.clipboard.writeText(sql).catch(() => {})}
             title="Copy SQL"
-            className="ml-auto flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex-shrink-0"
+            className="ml-auto flex items-center gap-1 text-[11px] text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8] transition-colors flex-shrink-0"
           >
             <svg viewBox="0 0 14 14" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.5}>
               <rect x="4" y="4" width="8" height="9" rx="1" />
@@ -272,7 +267,7 @@ export function SqlPanel() {
 
         {/* Inline error */}
         {error && (
-          <div className="mx-3 mb-2 px-2 py-1.5 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded text-[11px] font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap break-words">
+          <div className="mx-3 mb-2 px-3 py-2 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/60 rounded-lg text-[11px] font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap break-words leading-relaxed">
             {error}
           </div>
         )}
@@ -281,7 +276,7 @@ export function SqlPanel() {
       {/* Right-edge resize handle */}
       <div
         onMouseDown={handleResizeMouseDown}
-        className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-indigo-400 dark:hover:bg-indigo-600 transition-colors z-10"
+        className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#b45309] dark:hover:bg-[#fbbf24] transition-colors duration-150 z-10"
         title="Drag to resize"
       />
     </aside>

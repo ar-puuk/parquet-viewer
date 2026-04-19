@@ -2,22 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import { useAppStore } from '../../store/useAppStore'
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
 interface Projection {
   code: number
   name: string
   units: string
 }
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
 const LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const DARK_STYLE  = 'https://tiles.openfreemap.org/styles/dark'
 
-// ── proj4 string fetcher ─────────────────────────────────────────────────────
-
-// Session-level cache so we never hit epsg.io twice for the same code
 const proj4Cache = new Map<number, string>()
 
 async function fetchProj4Def(epsg: number): Promise<string | null> {
@@ -26,7 +19,6 @@ async function fetchProj4Def(epsg: number): Promise<string | null> {
     const res  = await fetch(`https://epsg.io/${epsg}.proj4`)
     if (!res.ok) return null
     const text = await res.text()
-    // A valid proj4 string starts with '+' (e.g. +proj=utm +zone=12 …)
     if (!text.trim().startsWith('+')) return null
     proj4Cache.set(epsg, text.trim())
     return text.trim()
@@ -34,8 +26,6 @@ async function fetchProj4Def(epsg: number): Promise<string | null> {
     return null
   }
 }
-
-// ── Component ────────────────────────────────────────────────────────────────
 
 export function CrsPanel() {
   const geoInfo    = useAppStore((s) => s.geoInfo)
@@ -45,18 +35,15 @@ export function CrsPanel() {
   const [isExpanded, setIsExpanded] = useState(false)
   const [activeTab, setActiveTab]   = useState<'location' | 'manual'>('location')
 
-  // Location tab state
-  const [projections, setProjections]           = useState<Projection[]>([])
-  const [suggestLoading, setSuggestLoading]     = useState(false)
-  const [suggestError, setSuggestError]         = useState<string | null>(null)
+  const [projections, setProjections]       = useState<Projection[]>([])
+  const [suggestLoading, setSuggestLoading] = useState(false)
+  const [suggestError, setSuggestError]     = useState<string | null>(null)
 
-  // Manual tab state
   const [manualInput, setManualInput] = useState('')
   const [manualError, setManualError] = useState('')
 
-  // Shared applying state (loading proj4 def after selection)
-  const [applying, setApplying]       = useState(false)
-  const [applyError, setApplyError]   = useState<string | null>(null)
+  const [applying, setApplying]     = useState(false)
+  const [applyError, setApplyError] = useState<string | null>(null)
 
   const miniMapContainerRef = useRef<HTMLDivElement>(null)
   const miniMapRef          = useRef<maplibregl.Map | null>(null)
@@ -66,14 +53,12 @@ export function CrsPanel() {
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  // Auto-expand when CRS is unknown and not yet set
   useEffect(() => {
     if (geoInfo && !geoInfo.isWGS84 && geoInfo.epsg === null) {
       setIsExpanded(true)
     }
   }, [geoInfo])
 
-  // ── Apply an EPSG code (fetch proj4 def → update store) ───────────────────
   const applyEpsg = useCallback(async (epsg: number) => {
     setApplying(true)
     setApplyError(null)
@@ -89,7 +74,6 @@ export function CrsPanel() {
     setApplyError(null)
   }, [setGeoEpsg])
 
-  // ── Fetch projest.io suggestions for a clicked map point ─────────────────
   const fetchSuggestions = useCallback(async (lng: number, lat: number) => {
     setSuggestLoading(true)
     setSuggestError(null)
@@ -115,20 +99,16 @@ export function CrsPanel() {
         name:  p.coord_ref_sys_name,
         units: p.unit_of_meas_name,
       })))
-    } catch (e) {
-      setSuggestError(
-        'Could not reach projest.io. Use the "Enter EPSG code" tab instead.'
-      )
+    } catch {
+      setSuggestError('Could not reach projest.io. Use the "Enter EPSG code" tab instead.')
     } finally {
       setSuggestLoading(false)
     }
   }, [])
 
-  // Stable ref so the map click handler never captures stale state
   const fetchSuggestionsRef = useRef(fetchSuggestions)
   useEffect(() => { fetchSuggestionsRef.current = fetchSuggestions }, [fetchSuggestions])
 
-  // ── Mini-map lifecycle ────────────────────────────────────────────────────
   useEffect(() => {
     if (!isExpanded || activeTab !== 'location' || !miniMapContainerRef.current) return
 
@@ -149,7 +129,7 @@ export function CrsPanel() {
       if (markerRef.current) {
         markerRef.current.setLngLat([lng, lat])
       } else {
-        markerRef.current = new maplibregl.Marker({ color: '#6366f1' })
+        markerRef.current = new maplibregl.Marker({ color: '#b45309' })
           .setLngLat([lng, lat])
           .addTo(map)
       }
@@ -169,7 +149,6 @@ export function CrsPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpanded, activeTab, isDark])
 
-  // ── Manual form submit ────────────────────────────────────────────────────
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault()
     setManualError('')
@@ -182,7 +161,6 @@ export function CrsPanel() {
     applyEpsg(n)
   }
 
-  // ── Visibility guard (must be after all hooks) ───────────────────────────
   if (!geoInfo || geoInfo.isWGS84) return null
 
   const hasEpsg = geoInfo.epsg !== null
@@ -190,7 +168,7 @@ export function CrsPanel() {
   // ── Collapsed strip ───────────────────────────────────────────────────────
   if (!isExpanded && hasEpsg) {
     return (
-      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 text-xs bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800">
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 text-xs bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60">
         <WarningIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         <span className="text-amber-800 dark:text-amber-200">
           Non-WGS84 detected — reprojecting from{' '}
@@ -198,7 +176,7 @@ export function CrsPanel() {
         </span>
         <button
           onClick={() => setIsExpanded(true)}
-          className="ml-auto shrink-0 text-amber-600 dark:text-amber-400 hover:underline"
+          className="ml-auto shrink-0 text-amber-600 dark:text-amber-400 hover:underline text-xs font-medium"
         >
           Change
         </button>
@@ -208,7 +186,7 @@ export function CrsPanel() {
 
   // ── Expanded drawer ───────────────────────────────────────────────────────
   return (
-    <div className="shrink-0 border-b border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900">
+    <div className="shrink-0 border-b border-amber-200 dark:border-amber-800/60 bg-white dark:bg-[#131e28]">
 
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-100 dark:border-amber-900/60">
@@ -220,7 +198,7 @@ export function CrsPanel() {
           <button
             onClick={() => setIsExpanded(false)}
             aria-label="Close"
-            className="ml-auto shrink-0 p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            className="ml-auto shrink-0 p-0.5 rounded text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8]"
           >
             <svg viewBox="0 0 12 12" className="w-3 h-3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round">
               <path d="M1 1l10 10M11 1L1 11" />
@@ -230,15 +208,15 @@ export function CrsPanel() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 px-3">
+      <div className="flex border-b border-[#d4c5a9] dark:border-[#253545] px-3">
         {(['location', 'manual'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
               activeTab === tab
-                ? 'border-indigo-500 text-indigo-700 dark:text-indigo-300'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                ? 'border-[#b45309] dark:border-[#fbbf24] text-[#b45309] dark:text-[#fbbf24]'
+                : 'border-transparent text-[#6b5e4a] dark:text-[#8a98a8] hover:text-[#1c1208] dark:hover:text-[#f0ebe0]'
             }`}
           >
             {tab === 'location' ? 'Find by location' : 'Enter EPSG code'}
@@ -249,7 +227,6 @@ export function CrsPanel() {
       {/* Tab body */}
       <div className="p-3">
 
-        {/* apply error (shared) */}
         {applyError && (
           <p className="mb-2 text-xs text-red-600 dark:text-red-400">{applyError}</p>
         )}
@@ -257,35 +234,32 @@ export function CrsPanel() {
         {/* ── Location tab ─────────────────────────────────────────────── */}
         {activeTab === 'location' && (
           <div className="flex gap-3">
-
-            {/* Left: mini-map */}
             <div className="shrink-0 w-52 flex flex-col gap-1">
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              <p className="text-[11px] text-[#6b5e4a] dark:text-[#8a98a8]">
                 Click where your data is located:
               </p>
               <div
                 ref={miniMapContainerRef}
-                className="w-full rounded border border-gray-200 dark:border-gray-700 overflow-hidden"
+                className="w-full rounded-lg border border-[#d4c5a9] dark:border-[#253545] overflow-hidden shadow-sm"
                 style={{ height: 164 }}
               />
             </div>
 
-            {/* Right: suggestions */}
             <div className="flex-1 min-w-0 flex flex-col gap-1">
               {!suggestLoading && !suggestError && projections.length === 0 && (
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-8 italic">
+                <p className="text-[11px] text-[#a8977a] dark:text-[#485868] mt-8 italic">
                   Click the map to see suggestions for that area.
                 </p>
               )}
               {suggestLoading && (
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-8">Loading…</p>
+                <p className="text-[11px] text-[#6b5e4a] dark:text-[#8a98a8] mt-8">Loading…</p>
               )}
               {suggestError && (
                 <p className="text-[11px] text-red-600 dark:text-red-400 mt-2">{suggestError}</p>
               )}
               {projections.length > 0 && (
                 <div className="overflow-y-auto" style={{ maxHeight: 172 }}>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                  <p className="text-[11px] text-[#6b5e4a] dark:text-[#8a98a8] mb-1">
                     Select a projection:
                   </p>
                   <div className="flex flex-col gap-0.5">
@@ -294,32 +268,31 @@ export function CrsPanel() {
                         key={p.code}
                         disabled={applying}
                         onClick={() => applyEpsg(p.code)}
-                        className="text-left px-2 py-1 rounded text-xs border border-transparent hover:bg-indigo-50 hover:border-indigo-200 dark:hover:bg-indigo-950/50 dark:hover:border-indigo-800 transition-colors disabled:opacity-50"
+                        className="text-left px-2 py-1 rounded text-xs border border-transparent hover:bg-[#fef3c7] dark:hover:bg-[#2d1c04] hover:border-[#e8dfc8] dark:hover:border-[#b45309]/40 transition-colors disabled:opacity-50"
                       >
-                        <span className="font-mono font-semibold text-indigo-700 dark:text-indigo-300">
+                        <span className="font-mono font-semibold text-[#b45309] dark:text-[#fbbf24]">
                           EPSG:{p.code}
                         </span>
-                        <span className="ml-2 text-gray-700 dark:text-gray-300">{p.name}</span>
-                        <span className="ml-1 text-gray-400 text-[10px]">({p.units})</span>
+                        <span className="ml-2 text-[#1c1208] dark:text-[#f0ebe0]">{p.name}</span>
+                        <span className="ml-1 text-[#a8977a] dark:text-[#485868] text-[10px]">({p.units})</span>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
               {applying && (
-                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">
+                <p className="text-[11px] text-[#b45309] dark:text-[#fbbf24] mt-1">
                   Loading projection definition…
                 </p>
               )}
             </div>
-
           </div>
         )}
 
         {/* ── Manual tab ───────────────────────────────────────────────── */}
         {activeTab === 'manual' && (
           <div className="flex flex-col gap-2">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-[#6b5e4a] dark:text-[#8a98a8]">
               Enter the EPSG code for the source projection.{' '}
               <span className="opacity-60">e.g. NAD83 / UTM Zone 12N → 26912</span>
             </p>
@@ -331,7 +304,7 @@ export function CrsPanel() {
                   onChange={(e) => { setManualInput(e.target.value); setManualError(''); setApplyError(null) }}
                   placeholder="26912"
                   disabled={applying}
-                  className="w-32 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                  className="w-32 px-2 py-1.5 border border-[#d4c5a9] dark:border-[#253545] rounded text-sm bg-white dark:bg-[#192430] text-[#1c1208] dark:text-[#f0ebe0] placeholder-[#a8977a] dark:placeholder-[#485868] focus:outline-none focus:ring-1 focus:ring-[#b45309] dark:focus:ring-[#fbbf24] disabled:opacity-50"
                 />
                 {manualError && (
                   <p className="text-[11px] text-red-600 dark:text-red-400">{manualError}</p>
@@ -340,7 +313,7 @@ export function CrsPanel() {
               <button
                 type="submit"
                 disabled={applying}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded text-sm font-medium transition-colors"
+                className="px-3 py-1.5 bg-[#b45309] hover:bg-[#92400e] dark:bg-[#fbbf24] dark:hover:bg-[#f59e0b] disabled:opacity-50 text-white dark:text-[#1c1208] rounded text-sm font-medium transition-colors duration-150"
               >
                 {applying ? 'Loading…' : 'Apply'}
               </button>
@@ -352,8 +325,6 @@ export function CrsPanel() {
     </div>
   )
 }
-
-// ── Icon ──────────────────────────────────────────────────────────────────────
 
 function WarningIcon({ className }: { className?: string }) {
   return (

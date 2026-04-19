@@ -16,26 +16,26 @@ function formatNumber(n: number | null | undefined): string {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  INTEGER: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  BIGINT: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  HUGEINT: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  SMALLINT: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  TINYINT: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  UBIGINT: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  UINTEGER: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  DOUBLE: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
-  FLOAT: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
-  DECIMAL: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
-  VARCHAR: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-  DATE: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
-  TIMESTAMP: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
-  BOOLEAN: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-  BLOB: 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+  INTEGER:   'bg-[#dbeafe] text-[#1e40af] dark:bg-[#1e3a5f] dark:text-[#93c5fd]',
+  BIGINT:    'bg-[#dbeafe] text-[#1e40af] dark:bg-[#1e3a5f] dark:text-[#93c5fd]',
+  HUGEINT:   'bg-[#dbeafe] text-[#1e40af] dark:bg-[#1e3a5f] dark:text-[#93c5fd]',
+  SMALLINT:  'bg-[#dbeafe] text-[#1e40af] dark:bg-[#1e3a5f] dark:text-[#93c5fd]',
+  TINYINT:   'bg-[#dbeafe] text-[#1e40af] dark:bg-[#1e3a5f] dark:text-[#93c5fd]',
+  UBIGINT:   'bg-[#dbeafe] text-[#1e40af] dark:bg-[#1e3a5f] dark:text-[#93c5fd]',
+  UINTEGER:  'bg-[#dbeafe] text-[#1e40af] dark:bg-[#1e3a5f] dark:text-[#93c5fd]',
+  DOUBLE:    'bg-[#ede9fe] text-[#5b21b6] dark:bg-[#2e1a5c] dark:text-[#c4b5fd]',
+  FLOAT:     'bg-[#ede9fe] text-[#5b21b6] dark:bg-[#2e1a5c] dark:text-[#c4b5fd]',
+  DECIMAL:   'bg-[#ede9fe] text-[#5b21b6] dark:bg-[#2e1a5c] dark:text-[#c4b5fd]',
+  VARCHAR:   'bg-[#d1fae5] text-[#065f46] dark:bg-[#052e16] dark:text-[#6ee7b7]',
+  DATE:      'bg-[#fef3c7] text-[#92400e] dark:bg-[#2d1c04] dark:text-[#fcd34d]',
+  TIMESTAMP: 'bg-[#fef3c7] text-[#92400e] dark:bg-[#2d1c04] dark:text-[#fcd34d]',
+  BOOLEAN:   'bg-[#ccfbf1] text-[#0f766e] dark:bg-[#042f2e] dark:text-[#5eead4]',
+  BLOB:      'bg-[#f1f5f9] text-[#64748b] dark:bg-[#1e293b] dark:text-[#94a3b8]',
 }
 
 function typeColor(type: string): string {
   const base = type.split('(')[0].toUpperCase()
-  return TYPE_COLORS[base] ?? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  return TYPE_COLORS[base] ?? 'bg-[#f8f4ec] text-[#6b5e4a] dark:bg-[#131e28] dark:text-[#8a98a8]'
 }
 
 export function SchemaSidebar() {
@@ -58,13 +58,12 @@ export function SchemaSidebar() {
 
   if (collapsed) {
     return (
-      <aside className="flex flex-col items-center w-10 border-l border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 py-3 gap-3 flex-shrink-0">
+      <aside className="flex flex-col items-center w-10 border-l border-[#d4c5a9] dark:border-[#253545] bg-[#f2ece0] dark:bg-[#131e28] py-3 gap-3 flex-shrink-0">
         <button
           onClick={() => setCollapsed(false)}
           title="Expand schema sidebar"
-          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+          className="p-1 rounded hover:bg-[#d4c5a9] dark:hover:bg-[#253545] text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8] transition-colors"
         >
-          {/* Chevron left — expands panel from the right */}
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
           </svg>
@@ -74,15 +73,15 @@ export function SchemaSidebar() {
   }
 
   return (
-    <aside className="w-64 flex-shrink-0 border-l border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
+    <aside className="w-64 flex-shrink-0 border-l border-[#d4c5a9] dark:border-[#253545] bg-[#f2ece0] dark:bg-[#131e28] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Schema</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#d4c5a9] dark:border-[#253545] flex-shrink-0">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-[#a8977a] dark:text-[#485868]">Schema</span>
         <div className="flex items-center gap-1">
           <button
             onClick={clearFile}
             title="Close file"
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            className="p-1 rounded hover:bg-[#d4c5a9] dark:hover:bg-[#253545] text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8] transition-colors"
           >
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -91,9 +90,8 @@ export function SchemaSidebar() {
           <button
             onClick={() => setCollapsed(true)}
             title="Collapse sidebar"
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            className="p-1 rounded hover:bg-[#d4c5a9] dark:hover:bg-[#253545] text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8] transition-colors"
           >
-            {/* Chevron right — collapses panel to the right */}
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
             </svg>
@@ -102,24 +100,24 @@ export function SchemaSidebar() {
       </div>
 
       {/* File name */}
-      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-        <p className="text-xs text-gray-500 dark:text-gray-400 truncate" title={activeFile.name}>
+      <div className="px-3 py-2 border-b border-[#d4c5a9] dark:border-[#253545] bg-white dark:bg-[#192430] flex-shrink-0">
+        <p className="text-[11px] font-mono text-[#6b5e4a] dark:text-[#8a98a8] truncate" title={activeFile.name}>
           {activeFile.name}
         </p>
       </div>
 
       {/* File stats grid */}
       {fileStats && (
-        <div className="grid grid-cols-2 gap-px bg-gray-200 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+        <div className="grid grid-cols-2 gap-px bg-[#d4c5a9] dark:bg-[#253545] border-b border-[#d4c5a9] dark:border-[#253545] flex-shrink-0">
           {[
             { label: 'Rows', value: formatNumber(fileStats.rowCount) },
             { label: 'Columns', value: formatNumber(fileStats.columnCount) },
             { label: 'Size', value: formatBytes(fileStats.fileSizeBytes) },
             { label: 'Row groups', value: formatNumber(fileStats.rowGroupCount) },
           ].map(({ label, value }) => (
-            <div key={label} className="bg-gray-50 dark:bg-gray-900 px-3 py-2">
-              <p className="text-xs text-gray-400 dark:text-gray-500">{label}</p>
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{value}</p>
+            <div key={label} className="bg-[#f8f4ec] dark:bg-[#131e28] px-3 py-2.5">
+              <p className="text-[10px] font-medium text-[#a8977a] dark:text-[#485868] uppercase tracking-wide">{label}</p>
+              <p className="text-sm font-semibold font-mono tabular-nums text-[#1c1208] dark:text-[#f0ebe0] truncate">{value}</p>
             </div>
           ))}
         </div>
@@ -127,9 +125,9 @@ export function SchemaSidebar() {
 
       {/* Parquet writer */}
       {fileStats?.createdBy && (
-        <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-          <p className="text-xs text-gray-400 dark:text-gray-500 truncate" title={fileStats.createdBy}>
-            Written by: {fileStats.createdBy}
+        <div className="px-3 py-1.5 border-b border-[#d4c5a9] dark:border-[#253545] bg-white dark:bg-[#192430] flex-shrink-0">
+          <p className="text-[10px] font-mono text-[#a8977a] dark:text-[#485868] truncate" title={fileStats.createdBy}>
+            {fileStats.createdBy}
           </p>
         </div>
       )}
@@ -140,22 +138,21 @@ export function SchemaSidebar() {
           {schema.map((col) => {
             const isSelected = selectedCol === col.name
             return (
-              <li key={col.name} className="border-b border-gray-100 dark:border-gray-800">
-                {/* Column row */}
+              <li key={col.name} className="border-b border-[#e8dfc8] dark:border-[#1e2e3c]">
                 <button
                   onClick={() => handleColClick(col.name, col.type)}
                   className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
                     isSelected
-                      ? 'bg-indigo-50 dark:bg-indigo-950'
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                      ? 'bg-[#fef3c7] dark:bg-[#2d1c04]'
+                      : 'hover:bg-white dark:hover:bg-[#192430]'
                   }`}
                 >
                   <div className="flex-1 min-w-0">
                     <p
                       className={`text-xs font-medium truncate ${
                         isSelected
-                          ? 'text-indigo-700 dark:text-indigo-300'
-                          : 'text-gray-800 dark:text-gray-200'
+                          ? 'text-[#b45309] dark:text-[#fbbf24]'
+                          : 'text-[#1c1208] dark:text-[#f0ebe0]'
                       }`}
                       title={col.name}
                     >
@@ -167,14 +164,14 @@ export function SchemaSidebar() {
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {col.nullable && (
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500" title="Nullable">
+                      <span className="text-[10px] text-[#a8977a] dark:text-[#485868]" title="Nullable">
                         null
                       </span>
                     )}
                     <svg
                       viewBox="0 0 16 16"
                       fill="currentColor"
-                      className={`w-3 h-3 text-gray-400 transition-transform ${isSelected ? 'rotate-180' : ''}`}
+                      className={`w-3 h-3 text-[#a8977a] dark:text-[#485868] transition-transform ${isSelected ? 'rotate-180' : ''}`}
                     >
                       <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 011.06 0L8 8.94l2.72-2.72a.75.75 0 111.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 7.28a.75.75 0 010-1.06z" clipRule="evenodd" />
                     </svg>
@@ -183,9 +180,9 @@ export function SchemaSidebar() {
 
                 {/* Inline stats panel */}
                 {isSelected && (
-                  <div className="px-3 py-2 bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800">
+                  <div className="px-3 py-3 bg-white dark:bg-[#192430] border-t border-[#e8dfc8] dark:border-[#1e2e3c] fade-in">
                     {statsLoading && (
-                      <div className="flex items-center gap-1.5 text-xs text-gray-400 py-1">
+                      <div className="flex items-center gap-1.5 text-xs text-[#a8977a] dark:text-[#485868] py-1">
                         <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
@@ -198,15 +195,11 @@ export function SchemaSidebar() {
                     )}
                     {stats && !statsLoading && (
                       <div className="space-y-1.5">
-                        {stats.minVal !== null && (
-                          <StatRow label="Min" value={stats.minVal} />
-                        )}
-                        {stats.maxVal !== null && (
-                          <StatRow label="Max" value={stats.maxVal} />
-                        )}
+                        {stats.minVal !== null && <StatRow label="Min" value={stats.minVal} />}
+                        {stats.maxVal !== null && <StatRow label="Max" value={stats.maxVal} />}
                         <StatRow label="Distinct" value={stats.distinctCount.toLocaleString()} />
                         <div>
-                          <div className="flex justify-between text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
+                          <div className="flex justify-between text-[10px] text-[#a8977a] dark:text-[#485868] mb-0.5">
                             <span>Nulls</span>
                             <span>
                               {stats.nullCount.toLocaleString()}
@@ -216,17 +209,16 @@ export function SchemaSidebar() {
                                 : 0}%)
                             </span>
                           </div>
-                          {/* Null bar */}
-                          <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                          <div className="h-1.5 w-full bg-[#e8dfc8] dark:bg-[#253545] rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-amber-400 dark:bg-amber-600 rounded-full"
+                              className="h-full bg-amber-400 dark:bg-amber-500 rounded-full"
                               style={{
                                 width: `${stats.totalSampled > 0 ? (stats.nullCount / stats.totalSampled) * 100 : 0}%`,
                               }}
                             />
                           </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                        <p className="text-[10px] text-[#a8977a] dark:text-[#485868]">
                           Sampled {stats.totalSampled.toLocaleString()} rows
                         </p>
                       </div>
@@ -245,8 +237,8 @@ export function SchemaSidebar() {
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between items-baseline gap-2">
-      <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{label}</span>
-      <span className="text-[10px] font-mono text-gray-700 dark:text-gray-300 truncate text-right" title={value}>
+      <span className="text-[10px] text-[#a8977a] dark:text-[#485868] flex-shrink-0">{label}</span>
+      <span className="text-[10px] font-mono text-[#1c1208] dark:text-[#f0ebe0] truncate text-right" title={value}>
         {value}
       </span>
     </div>

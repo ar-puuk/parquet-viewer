@@ -46,7 +46,7 @@ function FileLayout() {
                     onFeatureClick={(rowId) => setSelectedRowId(rowId)}
                   />
                   {geoError && (
-                    <div className="absolute bottom-4 left-2 bg-red-50 dark:bg-red-950 text-xs text-red-600 dark:text-red-400 px-2 py-1 rounded shadow">
+                    <div className="absolute bottom-4 left-2 bg-red-50/95 dark:bg-red-950/80 backdrop-blur-sm border border-red-200 dark:border-red-800/60 text-xs text-red-600 dark:text-red-400 px-2 py-1 rounded-lg shadow">
                       {geoError}
                     </div>
                   )}
@@ -62,7 +62,7 @@ function FileLayout() {
                 initialBbox={geoInfo.bbox}
                 onFeatureClick={(rowId) => setSelectedRowId(rowId)}
               />
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-xs text-gray-500 dark:text-gray-400 shadow-lg pointer-events-none select-none">
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 bg-white/95 dark:bg-[#192430]/95 backdrop-blur-md border border-[#d4c5a9] dark:border-[#2f4258] rounded-xl px-4 py-2 text-xs text-[#6b5e4a] dark:text-[#8a98a8] shadow-[0_4px_16px_rgba(0,0,0,0.12)] pointer-events-none select-none">
                 Run the query above to load features
               </div>
             </div>
@@ -72,8 +72,8 @@ function FileLayout() {
           queryResult ? (
             <DataTable />
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-950">
-              <p className="text-sm text-gray-400 dark:text-gray-600 select-none">
+            <div className="flex-1 flex items-center justify-center bg-[#fffbf2] dark:bg-[#0e171e]">
+              <p className="text-sm text-[#a8977a] dark:text-[#485868] select-none">
                 Run the query above to load data
               </p>
             </div>

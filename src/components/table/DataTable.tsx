@@ -24,7 +24,6 @@ export function DataTable() {
 
   const rawRows = queryResult?.rows ?? []
 
-  // Reset sort when query result changes
   useEffect(() => {
     setSortCol(null)
     setSortDir('asc')
@@ -50,7 +49,6 @@ export function DataTable() {
       if (prev !== colName) { setSortDir('asc'); return colName }
       setSortDir((d) => {
         if (d === 'asc') return 'desc'
-        // desc → clear sort
         setSortCol(null)
         return 'asc'
       })
@@ -58,9 +56,6 @@ export function DataTable() {
     })
   }, [])
 
-  // Derive display columns from query result columns, excluding __row_id.
-  // Also filter by visibleColumns when the query builder has a column selection active.
-  // Cross-reference with schema for type info; fall back to value inference.
   const columns = useMemo(() => {
     if (!queryResult) return []
     return queryResult.columns
@@ -72,7 +67,6 @@ export function DataTable() {
       }))
   }, [queryResult, schema, visibleColumns])
 
-  // Initialise column widths whenever the result columns change
   useEffect(() => {
     setColWidths(
       Object.fromEntries(
@@ -91,13 +85,10 @@ export function DataTable() {
     overscan: 10,
   })
 
-  // Scroll the virtualizer to keep the selected row in view whenever
-  // selectedRowId changes (triggered by a map-feature click).
   useEffect(() => {
     if (selectedRowId == null) return
     const idx = rows.findIndex((r) => Number(r.__row_id) === selectedRowId)
     if (idx >= 0) rowVirtualizer.scrollToIndex(idx, { align: 'center' })
-  // rowVirtualizer instance is stable; rows identity changes when query runs
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRowId])
 
@@ -117,8 +108,8 @@ export function DataTable() {
   // ── Empty state ──────────────────────────────────────────────────────────
   if (!queryResult) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white dark:bg-gray-950">
-        <p className="text-sm text-gray-400 dark:text-gray-600 select-none">
+      <div className="flex-1 flex items-center justify-center bg-[#fffbf2] dark:bg-[#0e171e]">
+        <p className="text-sm text-[#a8977a] dark:text-[#485868] select-none">
           Run a query to see results
         </p>
       </div>
@@ -127,22 +118,22 @@ export function DataTable() {
 
   if (rows.length === 0) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-950">
-        <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
-          <span className="text-xs text-gray-500 dark:text-gray-400">0 rows returned</span>
+      <div className="flex-1 flex flex-col overflow-hidden bg-[#fffbf2] dark:bg-[#0e171e]">
+        <div className="px-3 py-1.5 border-b border-[#d4c5a9] dark:border-[#253545] bg-[#f8f4ec] dark:bg-[#131e28] flex-shrink-0">
+          <span className="text-xs text-[#a8977a] dark:text-[#485868]">0 rows returned</span>
         </div>
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-gray-400 dark:text-gray-600 select-none">No rows matched</p>
+          <p className="text-sm text-[#a8977a] dark:text-[#485868] select-none">No rows matched</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-950">
+    <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0e171e]">
       {/* Status bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 bg-gray-50 dark:bg-gray-900">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#d4c5a9] dark:border-[#253545] flex-shrink-0 bg-[#f8f4ec] dark:bg-[#131e28]">
+        <span className="text-xs font-mono tabular-nums text-[#6b5e4a] dark:text-[#8a98a8]">
           {rows.length.toLocaleString()} row{rows.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -153,7 +144,7 @@ export function DataTable() {
 
           {/* Sticky header */}
           <div
-            className="flex sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-200 dark:border-gray-700"
+            className="flex sticky top-0 z-10 bg-[#f8f4ec] dark:bg-[#131e28] border-b-2 border-[#b8a88a] dark:border-[#2f4258]"
             style={{ minWidth: `${totalWidth}px` }}
           >
             {columns.map((col) => {
@@ -164,23 +155,23 @@ export function DataTable() {
                 <div
                   key={col.name}
                   style={{ width: w, minWidth: w, maxWidth: w }}
-                  className="relative flex items-center group border-r border-gray-200 dark:border-gray-700 last:border-r-0 flex-shrink-0"
+                  className="relative flex items-center group border-r border-[#e8dfc8] dark:border-[#1e2e3c] last:border-r-0 flex-shrink-0"
                 >
                   <button
                     onClick={() => handleHeaderClick(col.name)}
-                    className={`flex-1 flex items-center gap-1 px-2 py-2 overflow-hidden text-left w-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${isNum ? 'flex-row-reverse' : ''}`}
+                    className={`flex-1 flex items-center gap-1 px-2 py-2 overflow-hidden text-left w-full hover:bg-[#f2ece0] dark:hover:bg-[#192430] transition-colors ${isNum ? 'flex-row-reverse' : ''}`}
                   >
-                    <span className={`text-xs font-medium uppercase tracking-wide truncate ${isSorted ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-wide truncate ${isSorted ? 'text-[#b45309] dark:text-[#fbbf24]' : 'text-[#a8977a] dark:text-[#485868]'}`}>
                       {col.name}
                     </span>
                     {isSorted ? (
-                      <svg viewBox="0 0 10 12" className="w-2.5 h-3 flex-shrink-0 text-indigo-500 dark:text-indigo-400" fill="currentColor">
+                      <svg viewBox="0 0 10 12" className="w-2.5 h-3 flex-shrink-0 text-[#b45309] dark:text-[#fbbf24]" fill="currentColor">
                         {sortDir === 'asc'
                           ? <path d="M5 1 L9 6 H6 V11 H4 V6 H1 Z" />
                           : <path d="M5 11 L1 6 H4 V1 H6 V6 H9 Z" />}
                       </svg>
                     ) : (
-                      <svg viewBox="0 0 10 12" className="w-2.5 h-3 flex-shrink-0 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" fill="currentColor">
+                      <svg viewBox="0 0 10 12" className="w-2.5 h-3 flex-shrink-0 text-[#d4c5a9] dark:text-[#253545] opacity-0 group-hover:opacity-100 transition-opacity" fill="currentColor">
                         <path d="M5 1 L9 6 H6 V11 H4 V6 H1 Z" />
                       </svg>
                     )}
@@ -188,7 +179,7 @@ export function DataTable() {
                   {/* Resize handle */}
                   <div
                     onMouseDown={(e) => { e.preventDefault(); startResize(col.name, e.clientX) }}
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize opacity-0 group-hover:opacity-100 bg-indigo-400 transition-opacity z-10"
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize opacity-0 group-hover:opacity-100 bg-[#b45309] dark:bg-[#fbbf24] transition-opacity z-10"
                   />
                 </div>
               )
@@ -216,14 +207,14 @@ export function DataTable() {
                     transform: `translateY(${vRow.start}px)`,
                     minWidth: `${totalWidth}px`,
                   }}
-                  className={`flex border-b border-gray-100 dark:border-gray-800 cursor-pointer transition-colors ${
+                  className={`flex border-b cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-indigo-100 dark:bg-indigo-900/60'
+                      ? 'bg-[#fde68a] dark:bg-[#2d1c04] border-[#d4c5a9] dark:border-[#253545]'
                       : isHovered
-                      ? 'bg-indigo-50 dark:bg-indigo-950/60'
+                      ? 'bg-[#fef3c7] dark:bg-[#2d1c04]/60 border-[#e8dfc8] dark:border-[#1e2e3c]'
                       : isEven
-                      ? 'bg-white dark:bg-gray-950'
-                      : 'bg-gray-50/50 dark:bg-gray-900/50'
+                      ? 'bg-white dark:bg-[#0e171e] border-[#f2ece0] dark:border-[#192430]'
+                      : 'bg-[#fdf9f4] dark:bg-[#101820] border-[#f2ece0] dark:border-[#192430]'
                   }`}
                   onMouseEnter={() => rowId != null && setHoveredRowId(rowId)}
                   onMouseLeave={() => setHoveredRowId(null)}
@@ -235,7 +226,7 @@ export function DataTable() {
                       <div
                         key={col.name}
                         style={{ width: w, minWidth: w, maxWidth: w, height: ROW_HEIGHT }}
-                        className="border-r border-gray-100 dark:border-gray-800 last:border-r-0 flex-shrink-0 overflow-hidden"
+                        className="border-r border-[#f2ece0] dark:border-[#192430] last:border-r-0 flex-shrink-0 overflow-hidden"
                       >
                         <TableCell value={row?.[col.name]} colName={col.name} colType={col.type} />
                       </div>

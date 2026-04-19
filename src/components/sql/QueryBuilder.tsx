@@ -64,9 +64,6 @@ function buildSql(state: BuilderState, schema: ColumnInfo[]): string {
     ]
     selectClause = parts.length ? parts.join(',\n       ') : '*'
   } else {
-    // Column visibility is handled client-side in DataTable (via visibleColumns store
-    // field) to avoid DuckDB column-name mismatches on files with duplicate column
-    // names. The SQL always fetches all non-blob/geometry columns.
     selectClause = excluded.length
       ? `* EXCLUDE (${excluded.map((c) => `"${c}"`).join(', ')})`
       : '*'
@@ -175,10 +172,10 @@ function typeBadgeCls(type: string): string {
   if (['VARCHAR','TEXT','STRING','CHAR'].includes(t))
     return 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400'
   if (['DATE','TIMESTAMP','TIME','INTERVAL'].includes(t))
-    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400'
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400'
   if (['BOOLEAN','BOOL'].includes(t))
-    return 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400'
-  return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+    return 'bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400'
+  return 'bg-[#f8f4ec] text-[#6b5e4a] dark:bg-[#131e28] dark:text-[#8a98a8]'
 }
 
 const FILTER_OPS: FilterOp[] = ['=', '!=', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL']
@@ -191,7 +188,7 @@ function XBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button" onClick={onClick}
-      className="flex-shrink-0 text-gray-300 dark:text-gray-600 hover:text-red-400 dark:hover:text-red-400 transition-colors p-0.5"
+      className="flex-shrink-0 text-[#d4c5a9] dark:text-[#253545] hover:text-red-400 dark:hover:text-red-400 transition-colors p-0.5"
     >
       <svg viewBox="0 0 10 10" className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={2}>
         <line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/>
@@ -208,23 +205,23 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="border-b border-gray-100 dark:border-gray-800">
+    <div className="border-b border-[#e8dfc8] dark:border-[#1e2e3c]">
       <div className="flex items-center gap-1.5 px-3 py-2">
         <button
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
         >
-          <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{icon}</span>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 select-none">
+          <span className="text-[#a8977a] dark:text-[#485868] flex-shrink-0">{icon}</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6b5e4a] dark:text-[#8a98a8] select-none">
             {label}
           </span>
           {count != null && count > 0 && (
-            <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 px-1.5 py-px rounded-full font-medium leading-none">
+            <span className="text-[10px] bg-[#fef3c7] dark:bg-[#2d1c04] text-[#b45309] dark:text-[#fbbf24] px-1.5 py-px rounded-full font-medium leading-none">
               {count}
             </span>
           )}
           <svg viewBox="0 0 16 16" fill="currentColor"
-            className={`w-3 h-3 ml-auto text-gray-300 dark:text-gray-600 flex-shrink-0 transition-transform ${open ? '' : '-rotate-90'}`}
+            className={`w-3 h-3 ml-auto text-[#d4c5a9] dark:text-[#253545] flex-shrink-0 transition-transform ${open ? '' : '-rotate-90'}`}
           >
             <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 011.06 0L8 8.94l2.72-2.72a.75.75 0 111.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 7.28a.75.75 0 010-1.06z" clipRule="evenodd" />
           </svg>
@@ -242,7 +239,6 @@ const ColIcon  = () => <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="no
 const FiltIcon = () => <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M1.5 2.5h11l-4 5v4l-3-1.5V7.5l-4-5z"/></svg>
 const SortIcon = () => <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}><line x1="3" y1="2" x2="3" y2="11"/><path d="M1.5 4 3 2l1.5 2"/><line x1="11" y1="11" x2="11" y2="2"/><path d="M9.5 9 11 11l1.5-2"/><line x1="6" y1="4" x2="11" y2="4"/><line x1="6" y1="7" x2="8" y2="7"/></svg>
 const LimIcon  = () => <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}><line x1="2" y1="3" x2="12" y2="3"/><line x1="2" y1="7" x2="12" y2="7"/><line x1="2" y1="11" x2="7" y2="11"/></svg>
-// AggIcon not currently used as a Section icon (Σ is inlined in the toggle button)
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -267,7 +263,6 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
 
   useEffect(() => {
     onSqlRef.current(buildSql(state, schema))
-    // Notify parent of current column selection so it can apply it on Run.
     const cols = state.mode === 'select' && state.selectedCols.length > 0
       ? state.selectedCols
       : null
@@ -305,8 +300,8 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
   const activeFilters = state.filters.filter((f) => f.col && (f.op === 'IS NULL' || f.op === 'IS NOT NULL' || f.value.trim() !== ''))
 
   // Shared styles for selects/inputs inside cards
-  const cardSelect = 'bg-gray-50 dark:bg-gray-900 text-[11px] focus:outline-none cursor-pointer text-gray-700 dark:text-gray-200'
-  const addBtnCls  = 'text-[11px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors'
+  const cardSelect = 'bg-white dark:bg-[#192430] text-[11px] focus:outline-none cursor-pointer text-[#1c1208] dark:text-[#f0ebe0]'
+  const addBtnCls  = 'text-[11px] text-[#b45309] dark:text-[#fbbf24] hover:text-[#92400e] dark:hover:text-[#f59e0b] transition-colors'
 
   return (
     <div className="h-full overflow-y-auto text-[11px]">
@@ -320,8 +315,8 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
             onClick={() => update({ mode: state.mode === 'aggregate' ? 'select' : 'aggregate' })}
             className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
               state.mode === 'aggregate'
-                ? 'bg-indigo-100 dark:bg-indigo-900/60 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-400'
-                : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300 hover:text-gray-600 dark:hover:text-gray-400'
+                ? 'bg-[#fef3c7] dark:bg-[#2d1c04] border-[#b45309]/30 dark:border-[#fbbf24]/30 text-[#b45309] dark:text-[#fbbf24]'
+                : 'border-[#d4c5a9] dark:border-[#253545] text-[#a8977a] dark:text-[#485868] hover:border-[#b8a88a] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8]'
             }`}
           >
             Σ Aggregate
@@ -333,17 +328,17 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
             {/* Search + counts */}
             <div className="px-3 pb-1.5 flex items-center gap-2">
               <div className="relative flex-1">
-                <svg viewBox="0 0 14 14" className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-gray-300 dark:text-gray-600 pointer-events-none" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <svg viewBox="0 0 14 14" className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-[#d4c5a9] dark:text-[#253545] pointer-events-none" fill="none" stroke="currentColor" strokeWidth={1.5}>
                   <circle cx="5.5" cy="5.5" r="4"/><line x1="9" y1="9" x2="13" y2="13"/>
                 </svg>
                 <input
                   value={colSearch}
                   onChange={(e) => setColSearch(e.target.value)}
                   placeholder="Search columns…"
-                  className="w-full pl-6 pr-2 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md text-[11px] text-gray-700 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="w-full pl-6 pr-2 py-1 bg-[#f8f4ec] dark:bg-[#131e28] border border-[#d4c5a9] dark:border-[#253545] rounded-md text-[11px] text-[#1c1208] dark:text-[#f0ebe0] placeholder-[#a8977a] dark:placeholder-[#485868] focus:outline-none focus:ring-1 focus:ring-[#b45309] dark:focus:ring-[#fbbf24]"
                 />
               </div>
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 tabular-nums">{selCount}/{vis.length}</span>
+              <span className="text-[10px] text-[#a8977a] dark:text-[#485868] flex-shrink-0 tabular-nums">{selCount}/{vis.length}</span>
             </div>
             {/* Column rows */}
             <div className="max-h-52 overflow-y-auto">
@@ -357,18 +352,18 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
                       onClick={() => toggleCol(col.name)}
                       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors border-l-2 ${
                         on
-                          ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-500'
-                          : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/40'
+                          ? 'bg-[#fef3c7] dark:bg-[#2d1c04]/50 border-[#b45309] dark:border-[#fbbf24]'
+                          : 'border-transparent hover:bg-[#f8f4ec] dark:hover:bg-[#192430]/60'
                       }`}
                     >
                       <span className={`text-[9px] font-mono font-bold px-1 py-px rounded flex-shrink-0 ${typeBadgeCls(col.type)}`}>
                         {typeLabel(col.type)}
                       </span>
-                      <span className={`flex-1 truncate text-[12px] ${on ? 'text-indigo-700 dark:text-indigo-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
+                      <span className={`flex-1 truncate text-[12px] ${on ? 'text-[#b45309] dark:text-[#fbbf24] font-medium' : 'text-[#6b5e4a] dark:text-[#8a98a8]'}`}>
                         {col.name}
                       </span>
                       {on && (
-                        <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-indigo-400 dark:text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-[#b45309] dark:text-[#fbbf24] flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
                           <polyline points="1,5 3.5,8 9,1.5"/>
                         </svg>
                       )}
@@ -377,9 +372,9 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
                 })}
             </div>
             {/* All / Clear footer */}
-            <div className="px-3 pt-1.5 flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 mt-1">
+            <div className="px-3 pt-1.5 flex items-center gap-3 border-t border-[#e8dfc8] dark:border-[#1e2e3c] mt-1">
               <button onClick={() => { update({ selectedCols: [] }); setColSearch('') }} className={addBtnCls}>Select all</button>
-              <button onClick={() => update({ selectedCols: [colNames[0] ?? ''] })} className="text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Clear</button>
+              <button onClick={() => update({ selectedCols: [colNames[0] ?? ''] })} className="text-[11px] text-[#a8977a] dark:text-[#485868] hover:text-[#6b5e4a] dark:hover:text-[#8a98a8] transition-colors">Clear</button>
             </div>
           </div>
         ) : (
@@ -387,8 +382,8 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
           <div className="px-3 space-y-3">
             {/* Group By — row list */}
             <div>
-              <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Group by</p>
-              <div className="max-h-40 overflow-y-auto border border-gray-100 dark:border-gray-800 rounded-lg overflow-hidden">
+              <p className="text-[10px] font-medium text-[#a8977a] dark:text-[#485868] uppercase tracking-wider mb-1">Group by</p>
+              <div className="max-h-40 overflow-y-auto border border-[#e8dfc8] dark:border-[#1e2e3c] rounded-lg overflow-hidden">
                 {vis.map((col) => {
                   const on = state.groupByCols.includes(col.name)
                   return (
@@ -398,13 +393,13 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
                       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors border-l-2 ${
                         on
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-500'
-                          : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/40'
+                          : 'border-transparent hover:bg-[#f8f4ec] dark:hover:bg-[#192430]/60'
                       }`}
                     >
                       <span className={`text-[9px] font-mono font-bold px-1 py-px rounded flex-shrink-0 ${typeBadgeCls(col.type)}`}>
                         {typeLabel(col.type)}
                       </span>
-                      <span className={`flex-1 truncate text-[12px] ${on ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
+                      <span className={`flex-1 truncate text-[12px] ${on ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-[#6b5e4a] dark:text-[#8a98a8]'}`}>
                         {col.name}
                       </span>
                       {on && (
@@ -419,23 +414,23 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
             </div>
             {/* Aggregate rows */}
             <div className="space-y-1.5">
-              <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Aggregate</p>
+              <p className="text-[10px] font-medium text-[#a8977a] dark:text-[#485868] uppercase tracking-wider">Aggregate</p>
               {state.aggregates.map((a) => (
-                <div key={a.id} className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5">
+                <div key={a.id} className="flex items-center gap-1 bg-white dark:bg-[#192430] border border-[#d4c5a9] dark:border-[#253545] rounded-lg px-2 py-1.5">
                   <select value={a.fn} onChange={(e) => patchAgg(a.id, { fn: e.target.value as AggFn })}
-                    className="w-16 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-gray-50 dark:bg-gray-900 focus:outline-none cursor-pointer flex-shrink-0">
+                    className="w-16 text-[11px] font-bold text-[#b45309] dark:text-[#fbbf24] bg-white dark:bg-[#192430] focus:outline-none cursor-pointer flex-shrink-0">
                     {AGG_FNS.map((f) => <option key={f}>{f}</option>)}
                   </select>
-                  <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">(</span>
+                  <span className="text-[#d4c5a9] dark:text-[#253545] flex-shrink-0">(</span>
                   <select value={a.col} onChange={(e) => patchAgg(a.id, { col: e.target.value })}
                     className={cardSelect + ' flex-1 min-w-0'}>
                     {a.fn === 'COUNT' && <option value="*">*</option>}
                     {vis.map((c) => <option key={c.name}>{c.name}</option>)}
                   </select>
-                  <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">)</span>
+                  <span className="text-[#d4c5a9] dark:text-[#253545] flex-shrink-0">)</span>
                   <input value={a.alias} onChange={(e) => patchAgg(a.id, { alias: e.target.value })}
                     placeholder="alias"
-                    className="w-16 text-[11px] bg-transparent border-b border-gray-200 dark:border-gray-700 focus:outline-none text-gray-500 dark:text-gray-400 placeholder-gray-300 dark:placeholder-gray-600 flex-shrink-0" />
+                    className="w-16 text-[11px] bg-transparent border-b border-[#d4c5a9] dark:border-[#253545] focus:outline-none text-[#6b5e4a] dark:text-[#8a98a8] placeholder-[#d4c5a9] dark:placeholder-[#253545] flex-shrink-0" />
                   <XBtn onClick={() => removeAgg(a.id)} />
                 </div>
               ))}
@@ -453,13 +448,13 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
         action={<button onClick={addFilter} className={addBtnCls}>+ Add</button>}
       >
         {state.filters.length === 0 ? (
-          <p className="px-3 text-[11px] text-gray-400 dark:text-gray-600 italic">No filters — click + Add to begin</p>
+          <p className="px-3 text-[11px] text-[#a8977a] dark:text-[#485868] italic">No filters — click + Add to begin</p>
         ) : (
           <div className="px-3 space-y-2">
             {state.filters.map((f) => (
-              <div key={f.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div key={f.id} className="bg-white dark:bg-[#192430] border border-[#d4c5a9] dark:border-[#253545] rounded-lg overflow-hidden">
                 {/* Row 1: column name + remove */}
-                <div className="flex items-center gap-1 px-2.5 py-1.5 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-1 px-2.5 py-1.5 border-b border-[#e8dfc8] dark:border-[#1e2e3c]">
                   <select value={f.col} onChange={(e) => patchFilter(f.id, { col: e.target.value })}
                     className={cardSelect + ' flex-1 font-medium'}>
                     {colNames.map((c) => <option key={c}>{c}</option>)}
@@ -469,13 +464,13 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
                 {/* Row 2: operator + value */}
                 <div className="flex items-center gap-2 px-2.5 py-1.5">
                   <select value={f.op} onChange={(e) => patchFilter(f.id, { op: e.target.value as FilterOp })}
-                    className="w-24 flex-shrink-0 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-transparent focus:outline-none cursor-pointer">
+                    className="w-24 flex-shrink-0 text-[11px] font-semibold text-[#b45309] dark:text-[#fbbf24] bg-transparent focus:outline-none cursor-pointer">
                     {FILTER_OPS.map((op) => <option key={op}>{op}</option>)}
                   </select>
                   {f.op !== 'IS NULL' && f.op !== 'IS NOT NULL' && (
                     <input value={f.value} onChange={(e) => patchFilter(f.id, { value: e.target.value })}
                       placeholder="value"
-                      className="flex-1 min-w-0 text-[11px] bg-transparent border-b border-gray-200 dark:border-gray-700 focus:outline-none text-gray-700 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 pb-0.5" />
+                      className="flex-1 min-w-0 text-[11px] bg-transparent border-b border-[#d4c5a9] dark:border-[#253545] focus:outline-none text-[#1c1208] dark:text-[#f0ebe0] placeholder-[#a8977a] dark:placeholder-[#485868] pb-0.5" />
                   )}
                 </div>
               </div>
@@ -492,13 +487,13 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
         action={<button onClick={addSort} className={addBtnCls}>+ Add</button>}
       >
         {state.sorts.length === 0 ? (
-          <p className="px-3 text-[11px] text-gray-400 dark:text-gray-600 italic">No sorts — click + Add to begin</p>
+          <p className="px-3 text-[11px] text-[#a8977a] dark:text-[#485868] italic">No sorts — click + Add to begin</p>
         ) : (
           <div className="px-3 space-y-1.5">
             {state.sorts.map((s) => (
-              <div key={s.id} className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5">
+              <div key={s.id} className="flex items-center gap-1.5 bg-white dark:bg-[#192430] border border-[#d4c5a9] dark:border-[#253545] rounded-lg px-2.5 py-1.5">
                 {/* drag-handle dots */}
-                <svg viewBox="0 0 8 14" className="w-2 h-3 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="currentColor">
+                <svg viewBox="0 0 8 14" className="w-2 h-3 text-[#d4c5a9] dark:text-[#253545] flex-shrink-0" fill="currentColor">
                   <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/>
                   <circle cx="2" cy="7" r="1.2"/><circle cx="6" cy="7" r="1.2"/>
                   <circle cx="2" cy="12" r="1.2"/><circle cx="6" cy="12" r="1.2"/>
@@ -512,7 +507,7 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 transition-colors ${
                     s.dir === 'ASC'
                       ? 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
-                      : 'bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400'
+                      : 'bg-[#fef3c7] dark:bg-[#2d1c04] text-[#b45309] dark:text-[#fbbf24]'
                   }`}
                 >
                   {s.dir === 'ASC' ? '↑ ASC' : '↓ DESC'}
@@ -533,8 +528,8 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
               <button key={n} onClick={() => update({ limit: n })}
                 className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
                   state.limit === n
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-600 dark:hover:text-indigo-400'
+                    ? 'bg-[#b45309] dark:bg-[#fbbf24] text-white dark:text-[#1c1208] border-[#b45309] dark:border-[#fbbf24]'
+                    : 'border-[#d4c5a9] dark:border-[#253545] text-[#6b5e4a] dark:text-[#8a98a8] hover:border-[#b45309] dark:hover:border-[#fbbf24] hover:text-[#b45309] dark:hover:text-[#fbbf24]'
                 }`}
               >
                 {n.toLocaleString()}
@@ -546,9 +541,9 @@ export function QueryBuilder({ schema, initialSql, onSqlChange, onColumnSelectio
             <input
               type="number" min={1} value={state.limit}
               onChange={(e) => { const n = parseInt(e.target.value, 10); if (n > 0) update({ limit: n }) }}
-              className="w-full px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-[11px] text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-400 pr-10"
+              className="w-full px-2.5 py-1.5 border border-[#d4c5a9] dark:border-[#253545] rounded-lg bg-white dark:bg-[#192430] text-[11px] text-[#1c1208] dark:text-[#f0ebe0] focus:outline-none focus:ring-1 focus:ring-[#b45309] dark:focus:ring-[#fbbf24] pr-10"
             />
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 dark:text-gray-500 pointer-events-none select-none">rows</span>
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-[#a8977a] dark:text-[#485868] pointer-events-none select-none">rows</span>
           </div>
         </div>
       </Section>
